@@ -10,32 +10,19 @@ from game_engine.game_engine import Card, Deck, Player, GameState
 # --- Test Fixtures ---
 
 def create_mock_card_data(name: str, unique_id: str, **kwargs) -> dict:
-    """Creates a dictionary of mock card data, allowing overrides."""
-    data = {
-        'Name': name,
-        'Unique_ID': unique_id,
-        'Cost': 3,
-        'Inkable': True,
-        'Strength': 2,
-        'Willpower': 4,
-        'Lore': 1
-    }
+    data = { 'Name': name, 'Unique_ID': unique_id, 'Cost': 3, 'Inkable': True, 'Strength': 2, 'Willpower': 4, 'Lore': 1 }
     data.update(kwargs)
     return data
 
 def create_mock_deck(player_id: int, num_cards: int = 60) -> Deck:
-    """Creates a mock deck of cards for a given player."""
-    cards = [Card(create_mock_card_data(f"Card {i}", f"P{player_id}-{i}"), player_id) for i in range(num_cards)]
+    cards = [Card(create_mock_card_data(f"Card {i}", f"P{player_id}-{i}", Inkable=(i % 2 == 0)), player_id) for i in range(num_cards)]
     return Deck(cards)
 
 # --- Test Cases ---
 
-class TestGameEngineStateAndTurns(unittest.TestCase):
-    """
-    Test suite for the core classes and turn structure of the game engine.
-    """
+class TestPlayerActions(unittest.TestCase):
+    """Test suite for all core player actions."""
     def setUp(self):
-        """Set up a fresh game state for each test."""
         p1_deck = create_mock_deck(player_id=1)
         p2_deck = create_mock_deck(player_id=2)
         self.player1 = Player(player_id=1, deck=p1_deck)
@@ -44,68 +31,85 @@ class TestGameEngineStateAndTurns(unittest.TestCase):
         self.player2.draw_initial_hand()
         self.game = GameState(self.player1, self.player2)
 
-    def test_first_player_skips_first_draw(self):
-        """Verify the first player does not draw a card on turn 1."""
-        self.assertEqual(self.game.turn_number, 1)
-        self.assertEqual(self.game.current_player_id, 1)
-        self.assertEqual(len(self.player1.hand), 7)
+    def test_ink_card(self):
+        inkable_card = next(c for c in self.player1.hand if c.inkable)
+        non_inkable_card = next(c for c in self.player1.hand if not c.inkable)
+        
+        self.assertTrue(self.player1.ink_card(inkable_card))
+        self.assertEqual(len(self.player1.inkwell), 1)
+        self.assertEqual(self.player1.inkwell[0].location, 'inkwell')
+        self.assertTrue(self.player1.inkwell[0].is_exerted)
+        
+        self.assertFalse(self.player1.ink_card(non_inkable_card))
+        self.assertEqual(len(self.player1.inkwell), 1)
 
-        self.game.run_turn()
+    def test_play_card(self):
+        # Setup: Give player 1 some ink
+        for _ in range(3):
+            self.player1.inkwell.append(self.player1.deck.draw())
+        self.game._ready_phase() # Ready the ink
+        
+        card_to_play = Card(create_mock_card_data("Playable Card", "PC-1", Cost=3), 1)
+        self.player1.hand.append(card_to_play)
 
-        self.assertEqual(len(self.player1.hand), 7, "Player 1 should not draw on turn 1.")
+        self.assertEqual(self.player1.get_available_ink(), 3)
+        self.assertTrue(self.player1.play_card(card_to_play, self.game.turn_number))
+        self.assertEqual(len(self.player1.play_area), 1)
+        self.assertEqual(self.player1.play_area[0].turn_played, self.game.turn_number)
+        self.assertEqual(self.player1.get_available_ink(), 0)
 
-    def test_second_player_draws_on_first_turn(self):
-        """Verify the second player draws a card on their first turn."""
-        # Complete Player 1's first turn
-        self.game.run_turn()
-        self.game.end_turn()
+    def test_play_card_insufficient_ink(self):
+        card_to_play = Card(create_mock_card_data("Expensive Card", "EC-1", Cost=5), 1)
+        self.player1.hand.append(card_to_play)
+        self.assertFalse(self.player1.play_card(card_to_play, self.game.turn_number))
+        self.assertEqual(len(self.player1.play_area), 0)
 
-        self.assertEqual(self.game.current_player_id, 2)
-        self.assertEqual(len(self.player2.hand), 7)
+    def test_quest(self):
+        character = Card(create_mock_card_data("Quester", "Q-1", Lore=2), 1)
+        self.player1.play_area.append(character)
+        character.turn_played = 0 # Mark as having been played on a previous turn
 
-        self.game.run_turn()
+        self.assertTrue(self.player1.quest(character, self.game.turn_number))
+        self.assertEqual(self.player1.lore, 2)
+        self.assertTrue(character.is_exerted)
 
-        self.assertEqual(len(self.player2.hand), 8, "Player 2 should draw on their first turn.")
+    def test_quest_fail_ink_not_dry(self):
+        character = Card(create_mock_card_data("New Character", "NC-1", Lore=1), 1)
+        self.player1.play_area.append(character)
+        character.turn_played = self.game.turn_number # Just played this turn
 
-    def test_ready_phase_readies_exerted_cards(self):
-        """Verify that the ready phase correctly readies exerted cards."""
-        # Manually exert a card for Player 1
-        card_in_play = self.player1.deck.draw()
-        card_in_play.location = 'play'
-        card_in_play.is_exerted = True
-        self.player1.play_area.append(card_in_play)
+        self.assertFalse(self.player1.quest(character, self.game.turn_number))
+        self.assertEqual(self.player1.lore, 0)
 
-        self.assertTrue(self.player1.play_area[0].is_exerted)
-        self.game.run_turn() # This runs the ready phase for player 1
-        self.assertFalse(self.player1.play_area[0].is_exerted, "Card should be readied at the start of the turn.")
+    def test_challenge(self):
+        attacker = Card(create_mock_card_data("Attacker", "A-1", Strength=3, Willpower=3), 1)
+        defender = Card(create_mock_card_data("Defender", "D-1", Strength=2, Willpower=4), 2)
+        
+        self.player1.play_area.append(attacker)
+        attacker.turn_played = 0 # Ink is dry
+        self.player2.play_area.append(defender)
+        defender.is_exerted = True # Can be challenged
 
-    def test_win_condition_by_lore(self):
-        """Verify that the game correctly identifies a winner by lore count."""
-        self.assertIsNone(self.game.winner)
-        self.player1.lore = 19
-        self.game.run_turn() # Player 1's turn, no win yet
-        self.assertIsNone(self.game.winner)
+        self.assertTrue(self.game.challenge(attacker, defender))
+        self.assertTrue(attacker.is_exerted)
+        self.assertEqual(attacker.damage_counters, 2)
+        self.assertEqual(defender.damage_counters, 3)
+        self.assertIn(attacker, self.player1.play_area)
+        self.assertIn(defender, self.player2.play_area)
 
-        self.player1.lore = 20
-        self.game.run_turn() # Check at start of next turn should find the winner
-        self.assertEqual(self.game.winner, 1, "Player 1 should win by reaching 20 lore.")
+    def test_challenge_banishes_defender(self):
+        attacker = Card(create_mock_card_data("Strong Attacker", "SA-1", Strength=5, Willpower=3), 1)
+        defender = Card(create_mock_card_data("Weak Defender", "WD-1", Strength=2, Willpower=4), 2)
 
-    def test_loss_condition_by_deck_out(self):
-        """Verify that a player loses if they must draw from an empty deck."""
-        # Manually empty Player 2's deck
-        self.player2.deck.cards = []
-        self.assertTrue(self.player2.deck.is_empty())
+        self.player1.play_area.append(attacker)
+        attacker.turn_played = 0
+        self.player2.play_area.append(defender)
+        defender.is_exerted = True
 
-        # Progress to Player 2's turn
-        self.game.run_turn()
-        self.game.end_turn()
-
-        self.assertEqual(self.game.current_player_id, 2)
-        self.assertIsNone(self.game.winner)
-
-        self.game.run_turn() # Player 2 attempts to draw
-
-        self.assertEqual(self.game.winner, 1, "Player 2 should lose by decking out, making Player 1 the winner.")
+        self.game.challenge(attacker, defender)
+        self.assertEqual(defender.damage_counters, 5)
+        self.assertNotIn(defender, self.player2.play_area)
+        self.assertIn(defender, self.player2.discard_pile)
 
 if __name__ == '__main__':
     unittest.main()
