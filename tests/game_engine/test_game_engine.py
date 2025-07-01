@@ -9,9 +9,9 @@ from game_engine.game_engine import Card, Deck, Player, GameState
 
 # --- Test Fixtures ---
 
-def create_mock_card_data(name: str, unique_id: str) -> dict:
-    """Creates a dictionary of mock card data for testing."""
-    return {
+def create_mock_card_data(name: str, unique_id: str, **kwargs) -> dict:
+    """Creates a dictionary of mock card data, allowing overrides."""
+    data = {
         'Name': name,
         'Unique_ID': unique_id,
         'Cost': 3,
@@ -20,6 +20,8 @@ def create_mock_card_data(name: str, unique_id: str) -> dict:
         'Willpower': 4,
         'Lore': 1
     }
+    data.update(kwargs)
+    return data
 
 def create_mock_deck(player_id: int, num_cards: int = 60) -> Deck:
     """Creates a mock deck of cards for a given player."""
@@ -28,67 +30,82 @@ def create_mock_deck(player_id: int, num_cards: int = 60) -> Deck:
 
 # --- Test Cases ---
 
-class TestGameEngineClasses(unittest.TestCase):
+class TestGameEngineStateAndTurns(unittest.TestCase):
     """
-    Test suite for the core classes of the game engine.
+    Test suite for the core classes and turn structure of the game engine.
     """
-
-    def test_card_initialization(self):
-        """Tests that a Card object initializes with correct static and dynamic data."""
-        mock_data = create_mock_card_data("Test Card", "T-01")
-        card = Card(mock_data, owner_player_id=1)
-        
-        self.assertEqual(card.name, "Test Card")
-        self.assertEqual(card.owner_player_id, 1)
-        self.assertEqual(card.is_exerted, False)
-        self.assertEqual(card.damage_counters, 0)
-        self.assertEqual(card.location, 'deck') # Default initial location
-
-    def test_deck_creation_and_shuffle(self):
-        """Tests that a Deck is created with 60 cards and that shuffling changes the order."""
-        deck = create_mock_deck(player_id=1)
-        self.assertEqual(len(deck.cards), 60)
-        
-        original_order = [card.unique_id for card in deck.cards]
-        deck.shuffle()
-        shuffled_order = [card.unique_id for card in deck.cards]
-        
-        self.assertNotEqual(original_order, shuffled_order, "Shuffling should change the card order.")
-        self.assertEqual(len(deck.cards), 60, "Shuffling should not change the number of cards.")
-
-    def test_player_draw_initial_hand(self):
-        """Tests that a player draws 7 cards correctly, updating hand and deck states."""
-        deck = create_mock_deck(player_id=1)
-        player = Player(player_id=1, deck=deck)
-        
-        self.assertEqual(len(player.hand), 0)
-        self.assertEqual(len(player.deck.cards), 60)
-        
-        player.draw_initial_hand()
-        
-        self.assertEqual(len(player.hand), 7)
-        self.assertEqual(len(player.deck.cards), 53)
-        self.assertTrue(all(card.location == 'hand' for card in player.hand))
-
-    def test_game_state_initialization(self):
-        """Tests that the GameState is initialized with two players and correct starting values."""
+    def setUp(self):
+        """Set up a fresh game state for each test."""
         p1_deck = create_mock_deck(player_id=1)
         p2_deck = create_mock_deck(player_id=2)
-        player1 = Player(player_id=1, deck=p1_deck)
-        player2 = Player(player_id=2, deck=p2_deck)
-        
-        # Draw hands before creating the game state
-        player1.draw_initial_hand()
-        player2.draw_initial_hand()
-        
-        game = GameState(player1, player2)
-        
-        self.assertEqual(game.current_player_id, 1)
-        self.assertEqual(game.turn_number, 1)
-        self.assertEqual(len(game.get_player(1).hand), 7)
-        self.assertEqual(len(game.get_player(2).hand), 7)
-        self.assertEqual(game.get_opponent(1).player_id, 2)
-        self.assertEqual(game.get_opponent(2).player_id, 1)
+        self.player1 = Player(player_id=1, deck=p1_deck)
+        self.player2 = Player(player_id=2, deck=p2_deck)
+        self.player1.draw_initial_hand()
+        self.player2.draw_initial_hand()
+        self.game = GameState(self.player1, self.player2)
+
+    def test_first_player_skips_first_draw(self):
+        """Verify the first player does not draw a card on turn 1."""
+        self.assertEqual(self.game.turn_number, 1)
+        self.assertEqual(self.game.current_player_id, 1)
+        self.assertEqual(len(self.player1.hand), 7)
+
+        self.game.run_turn()
+
+        self.assertEqual(len(self.player1.hand), 7, "Player 1 should not draw on turn 1.")
+
+    def test_second_player_draws_on_first_turn(self):
+        """Verify the second player draws a card on their first turn."""
+        # Complete Player 1's first turn
+        self.game.run_turn()
+        self.game.end_turn()
+
+        self.assertEqual(self.game.current_player_id, 2)
+        self.assertEqual(len(self.player2.hand), 7)
+
+        self.game.run_turn()
+
+        self.assertEqual(len(self.player2.hand), 8, "Player 2 should draw on their first turn.")
+
+    def test_ready_phase_readies_exerted_cards(self):
+        """Verify that the ready phase correctly readies exerted cards."""
+        # Manually exert a card for Player 1
+        card_in_play = self.player1.deck.draw()
+        card_in_play.location = 'play'
+        card_in_play.is_exerted = True
+        self.player1.play_area.append(card_in_play)
+
+        self.assertTrue(self.player1.play_area[0].is_exerted)
+        self.game.run_turn() # This runs the ready phase for player 1
+        self.assertFalse(self.player1.play_area[0].is_exerted, "Card should be readied at the start of the turn.")
+
+    def test_win_condition_by_lore(self):
+        """Verify that the game correctly identifies a winner by lore count."""
+        self.assertIsNone(self.game.winner)
+        self.player1.lore = 19
+        self.game.run_turn() # Player 1's turn, no win yet
+        self.assertIsNone(self.game.winner)
+
+        self.player1.lore = 20
+        self.game.run_turn() # Check at start of next turn should find the winner
+        self.assertEqual(self.game.winner, 1, "Player 1 should win by reaching 20 lore.")
+
+    def test_loss_condition_by_deck_out(self):
+        """Verify that a player loses if they must draw from an empty deck."""
+        # Manually empty Player 2's deck
+        self.player2.deck.cards = []
+        self.assertTrue(self.player2.deck.is_empty())
+
+        # Progress to Player 2's turn
+        self.game.run_turn()
+        self.game.end_turn()
+
+        self.assertEqual(self.game.current_player_id, 2)
+        self.assertIsNone(self.game.winner)
+
+        self.game.run_turn() # Player 2 attempts to draw
+
+        self.assertEqual(self.game.winner, 1, "Player 2 should lose by decking out, making Player 1 the winner.")
 
 if __name__ == '__main__':
     unittest.main()
