@@ -43,6 +43,18 @@ This document outlines the step-by-step plan to complete Project Oracle, buildin
 - **Action:** Create a new file (`player_logic.py`) and import it into `game_engine.py`.
 - **Details:** Implement the heuristic AI for decision-making as outlined in the devspec. This includes functions for choosing what to ink, evaluating board state, and selecting the optimal action (quest vs. challenge vs. playing a card).
 
+**Task 2.5: Implement Action & Song Card Logic**
+- **Action:** Enhance the `play_card` method in `game_engine.py`.
+- **Details:** Add logic to differentiate between card types (Character, Action, Item). Actions should be moved to the discard pile immediately after their effect is resolved. Implement the 'Singer' keyword, allowing characters to be exerted to play a Song card for free instead of paying its ink cost.
+
+**Task 2.6: Implement Core Keyword Abilities**
+- **Action:** Update the `challenge` method in `game_engine.py` and related AI logic.
+- **Details:** Integrate the passive combat-related keywords from `lorcana_abilities_master.json`. This includes `Bodyguard` (must be challenged first), `Support` (adds strength to another character when questing), `Challenger +X` (gains strength when challenging), and `Resist +X` (reduces damage taken).
+
+**Task 2.7: Enhance AI Heuristics & Action Loop**
+- **Action:** Refactor the `run_main_phase` function in `player_logic.py`.
+- **Details:** Replace the rigid, one-action-per-turn logic with a flexible loop that continues as long as the AI has available ink and actions. The AI should be able to play a card, challenge, quest, and sing a song all in the same turn. Improve heuristics to make smarter decisions, such as evaluating trades (e.g., is it worth it to banish my character to banish a higher-value target?) and recognizing when to use `Bodyguard` characters defensively.
+
 ## Stage 3: The Deck Generator and Genetic Algorithm (The Breeder)
 
 *With a functional game engine, we can now automate deck testing and evolution.*

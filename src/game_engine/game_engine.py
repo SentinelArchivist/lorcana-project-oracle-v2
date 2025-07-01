@@ -3,6 +3,18 @@ from typing import List, Dict, Optional, Any
 
 from . import player_logic
 
+class ParsedAbility:
+    """A simple structure to hold parsed ability data."""
+    def __init__(self, trigger: str, effect: str, target: str, value: Any, notes: str):
+        self.trigger = trigger
+        self.effect = effect
+        self.target = target
+        self.value = value
+        self.notes = notes
+
+    def __repr__(self) -> str:
+        return f"Ability(trigger={self.trigger}, effect={self.effect}, value={self.value})"
+
 class Card:
     """Represents a single instance of a card within a game."""
     def __init__(self, card_data: Dict[str, Any], owner_player_id: int):
@@ -13,6 +25,8 @@ class Card:
         self.strength = card_data.get('Strength')
         self.willpower = card_data.get('Willpower')
         self.lore = card_data.get('Lore', 0)
+        self.card_type = card_data.get('Type', 'Character') # Character, Action, Item
+        self.abilities = [ParsedAbility(**ability) for ability in card_data.get('Abilities', [])]
         self.owner_player_id = owner_player_id
         self.is_exerted = False
         self.damage_counters = 0
@@ -21,6 +35,17 @@ class Card:
 
     def __repr__(self) -> str:
         return f"Card({self.name})"
+
+    def has_keyword(self, keyword: str) -> bool:
+        """Check if the card has a specific keyword ability."""
+        return any(ability.value.get('keyword') == keyword for ability in self.abilities)
+
+    def get_keyword_value(self, keyword: str) -> Any:
+        """Get the value associated with a keyword (e.g., Singer's cost)."""
+        for ability in self.abilities:
+            if ability.value.get('keyword') == keyword:
+                return ability.value.get('amount')
+        return None
 
 class Deck:
     """Represents a player's deck of 60 cards."""
@@ -47,6 +72,7 @@ class Player:
         self.play_area: List[Card] = []
         self.discard_pile: List[Card] = []
         self.lore = 0
+        self.temporary_strength_mods: Dict[str, int] = {}
 
     def draw_initial_hand(self, num_cards: int = 7):
         for _ in range(num_cards):
@@ -78,27 +104,63 @@ class Player:
         return False
 
     def play_card(self, card: Card, game_turn: int) -> bool:
-        """Plays a card from hand to the play area. Returns True on success."""
-        if card in self.hand and self.get_available_ink() >= card.cost:
-            # Exert the ink
-            ink_to_exert = card.cost
-            for ink_card in self.inkwell:
-                if not ink_card.is_exerted and ink_to_exert > 0:
-                    ink_card.is_exerted = True
-                    ink_to_exert -= 1
-            
-            self.hand.remove(card)
+        """Plays a card from hand. Returns True on success."""
+        if card not in self.hand or self.get_available_ink() < card.cost:
+            return False
+
+        # Exert the ink
+        ink_to_exert = card.cost
+        for ink_card in self.inkwell:
+            if not ink_card.is_exerted and ink_to_exert > 0:
+                ink_card.is_exerted = True
+                ink_to_exert -= 1
+        
+        self.hand.remove(card)
+        card.turn_played = game_turn
+
+        if card.card_type == 'Character':
             card.location = 'play'
-            card.turn_played = game_turn
             self.play_area.append(card)
+        elif card.card_type == 'Action' or card.card_type == 'Song':
+            # For now, actions/songs just go to discard. Effects will be in Task 2.6+
+            card.location = 'discard'
+            self.discard_pile.append(card)
+        
+        return True
+
+    def sing_song(self, song_card: Card, singer: Card, game_turn: int) -> bool:
+        """Plays a song by exerting a character. Returns True on success."""
+        singer_ability_cost = singer.get_keyword_value('Singer')
+        if (song_card in self.hand and
+            song_card.card_type == 'Song' and
+            singer in self.play_area and
+            self._can_character_act(singer, game_turn) and
+            singer_ability_cost is not None and
+            song_card.cost <= singer_ability_cost):
+            
+            singer.is_exerted = True
+            self.hand.remove(song_card)
+            song_card.location = 'discard'
+            self.discard_pile.append(song_card)
             return True
         return False
 
-    def quest(self, character: Card, game_turn: int) -> bool:
+    def clear_temporary_mods(self):
+        """Clears any temporary modifications, like from Support."""
+        self.temporary_strength_mods.clear()
+
+    def quest(self, character: Card, game_turn: int, support_target: Optional[Card] = None) -> bool:
         """Quests with a character. Returns True on success."""
         if character in self.play_area and self._can_character_act(character, game_turn):
             character.is_exerted = True
             self.lore += character.lore
+
+            # Handle Support keyword
+            if character.has_keyword('Support') and support_target and support_target in self.play_area:
+                support_value = character.strength or 0
+                current_bonus = self.temporary_strength_mods.get(support_target.unique_id, 0)
+                self.temporary_strength_mods[support_target.unique_id] = current_bonus + support_value
+
             return True
         return False
 
@@ -126,13 +188,31 @@ class GameState:
         if not defender.is_exerted:
             return False
 
+        # Bodyguard rule: if a bodyguard is available, it must be challenged.
+        if not defender.has_keyword('Bodyguard'):
+            bodyguards = [c for c in defender_player.play_area if c.is_exerted and c.has_keyword('Bodyguard')]
+            if bodyguards:
+                return False # Illegal move: a Bodyguard character should have been challenged.
+
         attacker.is_exerted = True
-        
+
+        # Calculate effective strength and damage, accounting for keywords
+        attacker_player = self.get_player(attacker.owner_player_id)
+        attacker_strength = (attacker.strength or 0) + attacker_player.temporary_strength_mods.get(attacker.unique_id, 0)
+        defender_strength = defender.strength or 0
+
+        challenger_bonus = attacker.get_keyword_value('Challenger')
+        if challenger_bonus:
+            attacker_strength += challenger_bonus
+
+        resist_value = defender.get_keyword_value('Resist')
+        damage_to_defender = attacker_strength
+        if resist_value:
+            damage_to_defender = max(0, damage_to_defender - resist_value)
+
         # Deal damage
-        if attacker.strength is not None:
-            defender.damage_counters += attacker.strength
-        if defender.strength is not None:
-            attacker.damage_counters += defender.strength
+        defender.damage_counters += damage_to_defender
+        attacker.damage_counters += defender_strength
 
         # Check for banishment
         if defender.willpower is not None and defender.damage_counters >= defender.willpower:
@@ -190,6 +270,9 @@ class GameState:
 
     def end_turn(self):
         if self.winner: return
+
+        # Clear temporary effects for the active player before the turn ends.
+        self.get_player(self.current_player_id).clear_temporary_mods()
         self.current_player_id = self.get_opponent(self.current_player_id).player_id
         if self.current_player_id == 1:
             self.turn_number += 1

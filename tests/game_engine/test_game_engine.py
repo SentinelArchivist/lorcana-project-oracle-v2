@@ -5,12 +5,17 @@ import os
 # Add the src directory to the Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../src')))
 
-from game_engine.game_engine import Card, Deck, Player, GameState
+from game_engine.game_engine import Card, Deck, Player, GameState, ParsedAbility
 
 # --- Test Fixtures ---
 
 def create_mock_card_data(name: str, unique_id: str, **kwargs) -> dict:
-    data = { 'Name': name, 'Unique_ID': unique_id, 'Cost': 3, 'Inkable': True, 'Strength': 2, 'Willpower': 4, 'Lore': 1 }
+    """Helper function to create mock card data for tests."""
+    data = {
+        'Name': name, 'Unique_ID': unique_id, 'Cost': 3, 'Inkable': True,
+        'Strength': 2, 'Willpower': 4, 'Lore': 1, 'Type': 'Character',
+        'Abilities': []
+    }
     data.update(kwargs)
     return data
 
@@ -19,6 +24,96 @@ def create_mock_deck(player_id: int, num_cards: int = 60) -> Deck:
     return Deck(cards)
 
 # --- Test Cases ---
+
+class TestKeywords(unittest.TestCase):
+    def setUp(self):
+        """Set up a basic game state for each test."""
+        self.p1_deck = Deck([Card(create_mock_card_data(f"P1-Card{i}", f"p1c{i}"), 1) for i in range(20)])
+        self.p2_deck = Deck([Card(create_mock_card_data(f"P2-Card{i}", f"p2c{i}"), 2) for i in range(20)])
+        self.player1 = Player(1, self.p1_deck)
+        self.player2 = Player(2, self.p2_deck)
+        self.game = GameState(self.player1, self.player2)
+        self.game.turn_number = 2 # Avoid turn 1 draw skip
+
+    def test_challenge_with_challenger(self):
+        """Verify Challenger keyword adds strength to attacker."""
+        ability = {'trigger': 'Passive', 'effect': 'GainKeyword', 'target': 'Self', 'value': {'keyword': 'Challenger', 'amount': 2}, 'notes': ''}
+        attacker = Card(create_mock_card_data("Attacker", "a-1", Strength=2, Willpower=3, Abilities=[ability]), 1)
+        defender = Card(create_mock_card_data("Defender", "d-1", Strength=1, Willpower=5), 2)
+        self.player1.play_area.append(attacker)
+        self.player2.play_area.append(defender)
+        attacker.turn_played = 1
+        defender.is_exerted = True
+
+        self.game.challenge(attacker, defender)
+        self.assertEqual(defender.damage_counters, 4, "Defender should take 4 damage (2 base + 2 Challenger).")
+
+    def test_challenge_with_resist(self):
+        """Verify Resist keyword reduces damage taken."""
+        ability = {'trigger': 'Passive', 'effect': 'GainKeyword', 'target': 'Self', 'value': {'keyword': 'Resist', 'amount': 1}, 'notes': ''}
+        attacker = Card(create_mock_card_data("Attacker", "a-1", Strength=3, Willpower=3), 1)
+        defender = Card(create_mock_card_data("Defender", "d-1", Strength=1, Willpower=5, Abilities=[ability]), 2)
+        self.player1.play_area.append(attacker)
+        self.player2.play_area.append(defender)
+        attacker.turn_played = 1
+        defender.is_exerted = True
+
+        self.game.challenge(attacker, defender)
+        self.assertEqual(defender.damage_counters, 2, "Defender should take 2 damage (3 base - 1 Resist).")
+
+    def test_challenge_bodyguard_rule(self):
+        """Verify Bodyguard rule is enforced."""
+        ability = {'trigger': 'Passive', 'effect': 'GainKeyword', 'target': 'Self', 'value': {'keyword': 'Bodyguard'}, 'notes': ''}
+        attacker = Card(create_mock_card_data("Attacker", "a-1", Strength=1, Willpower=1), 1)
+        non_bodyguard = Card(create_mock_card_data("Target", "t-1", Strength=1, Willpower=2), 2)
+        bodyguard = Card(create_mock_card_data("Bodyguard", "bg-1", Strength=1, Willpower=3, Abilities=[ability]), 2)
+        self.player1.play_area.append(attacker)
+        self.player2.play_area.extend([non_bodyguard, bodyguard])
+        attacker.turn_played = 1
+        non_bodyguard.is_exerted = True
+        bodyguard.is_exerted = True
+
+        # Trying to challenge the non-bodyguard should fail
+        self.assertFalse(self.game.challenge(attacker, non_bodyguard), "Challenge should fail against non-bodyguard.")
+        # Challenging the bodyguard should succeed
+        self.assertTrue(self.game.challenge(attacker, bodyguard), "Challenge should succeed against bodyguard.")
+
+    def test_quest_with_support(self):
+        """Verify Support keyword grants temporary strength."""
+        ability = {'trigger': 'Passive', 'effect': 'GainKeyword', 'target': 'Self', 'value': {'keyword': 'Support'}, 'notes': ''}
+        supporter = Card(create_mock_card_data("Supporter", "sup-1", Strength=2, Willpower=2, Abilities=[ability]), 1)
+        recipient = Card(create_mock_card_data("Recipient", "rec-1", Strength=3, Willpower=3), 1)
+        self.player1.play_area.extend([supporter, recipient])
+        supporter.turn_played = 1
+        recipient.turn_played = 1
+
+        self.player1.quest(supporter, self.game.turn_number, support_target=recipient)
+        
+        # Check temporary strength mod
+        self.assertEqual(self.player1.temporary_strength_mods.get(recipient.unique_id, 0), 2, "Recipient should get +2 strength.")
+
+        # Verify the bonus applies in a challenge
+        defender = Card(create_mock_card_data("Defender", "d-1", Strength=1, Willpower=6), 2)
+        self.player2.play_area.append(defender)
+        defender.is_exerted = True
+        self.game.challenge(recipient, defender)
+        self.assertEqual(defender.damage_counters, 5, "Defender should take 5 damage (3 base + 2 Support).")
+
+    def test_support_bonus_is_temporary(self):
+        """Verify Support bonus is cleared at the end of the turn."""
+        ability = {'trigger': 'Passive', 'effect': 'GainKeyword', 'target': 'Self', 'value': {'keyword': 'Support'}, 'notes': ''}
+        supporter = Card(create_mock_card_data("Supporter", "sup-1", Strength=2, Willpower=2, Abilities=[ability]), 1)
+        recipient = Card(create_mock_card_data("Recipient", "rec-1", Strength=3, Willpower=3), 1)
+        self.player1.play_area.extend([supporter, recipient])
+        supporter.turn_played = 1
+        recipient.turn_played = 1
+
+        self.player1.quest(supporter, self.game.turn_number, support_target=recipient)
+        self.assertNotEqual(self.player1.temporary_strength_mods, {}, "Bonus should exist during the turn.")
+
+        self.game.end_turn()
+        self.assertEqual(self.player1.temporary_strength_mods, {}, "Bonus should be cleared after the turn ends.")
+
 
 class TestPlayerActions(unittest.TestCase):
     """Test suite for all core player actions."""
@@ -110,6 +205,64 @@ class TestPlayerActions(unittest.TestCase):
         self.assertEqual(defender.damage_counters, 5)
         self.assertNotIn(defender, self.player2.play_area)
         self.assertIn(defender, self.player2.discard_pile)
+
+    def test_game_over_draw(self):
+        """Verify a player loses if they must draw from an empty deck."""
+        # It's player 1's turn, but not their first turn.
+        self.game.turn_number = 2
+        self.player1.deck.cards = []
+        self.game._draw_phase() # Player 1 tries to draw
+        self.assertEqual(self.game.winner, 2, "Player 2 should win if Player 1 decks out.")
+
+    def test_play_action_card(self):
+        """Verify playing an Action card moves it to discard."""
+        action_card = Card(create_mock_card_data("Action Card", "ac-1", Type='Action', Cost=1), 1)
+        self.player1.hand.append(action_card)
+        # Give player ink
+        ink = Card(create_mock_card_data("Ink", "i-1", Inkable=True), 1)
+        self.player1.hand.append(ink)
+        self.player1.ink_card(ink)
+        self.game._ready_phase()
+
+        self.assertTrue(self.player1.play_card(action_card, self.game.turn_number))
+        self.assertIn(action_card, self.player1.discard_pile)
+        self.assertNotIn(action_card, self.player1.hand)
+        self.assertNotIn(action_card, self.player1.play_area)
+
+    def test_sing_song(self):
+        """Verify a character with Singer can play a Song for free."""
+        song_card = Card(create_mock_card_data("Test Song", "song-1", Type='Song', Cost=3), 1)
+        singer_ability = {
+            "trigger": "Passive", "effect": "GainKeyword", "target": "Self",
+            "value": {"keyword": "Singer", "amount": 5}, "notes": "Singer 5"
+        }
+        singer_char = Card(create_mock_card_data("Singer Char", "singer-1", Abilities=[singer_ability]), 1)
+        singer_char.turn_played = 0 # Ink is dry
+
+        self.player1.hand.append(song_card)
+        self.player1.play_area.append(singer_char)
+
+        self.assertTrue(self.player1.sing_song(song_card, singer_char, self.game.turn_number))
+        self.assertIn(song_card, self.player1.discard_pile)
+        self.assertTrue(singer_char.is_exerted)
+        self.assertEqual(self.player1.get_available_ink(), 0) # No ink should be spent
+
+    def test_sing_song_invalid_cost(self):
+        """Verify a Singer cannot sing a song that costs more than their value."""
+        expensive_song = Card(create_mock_card_data("Expensive Song", "es-1", Type='Song', Cost=5), 1)
+        singer_ability = {
+            "trigger": "Passive", "effect": "GainKeyword", "target": "Self",
+            "value": {"keyword": "Singer", "amount": 3}, "notes": "Singer 3"
+        }
+        singer_char = Card(create_mock_card_data("Weak Singer", "ws-1", Abilities=[singer_ability]), 1)
+        singer_char.turn_played = 0
+
+        self.player1.hand.append(expensive_song)
+        self.player1.play_area.append(singer_char)
+
+        self.assertFalse(self.player1.sing_song(expensive_song, singer_char, self.game.turn_number))
+        self.assertIn(expensive_song, self.player1.hand)
+        self.assertFalse(singer_char.is_exerted)
 
 if __name__ == '__main__':
     unittest.main()
