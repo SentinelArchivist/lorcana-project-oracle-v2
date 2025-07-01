@@ -1,35 +1,31 @@
 import pandas as pd
 import json
+import re
 from typing import List, Dict, Optional, Any
 
+# --- Data Structures (from Task 1.1) ---
+
 class ParsedAbility:
-    """
-    Represents a single, machine-readable game ability, translated from raw card text.
-    This class defines the structured format for an ability.
-    """
+    """Represents a single, machine-readable game ability."""
     def __init__(self, trigger: str, effect: str, target: str, value: Any, notes: str = ""):
-        self.trigger = trigger  # e.g., 'OnPlay', 'When this character quests'
-        self.effect = effect    # e.g., 'DrawCard', 'DealDamage'
-        self.target = target    # e.g., 'ChosenCharacter', 'Self', 'OpponentPlayer'
-        self.value = value      # e.g., 1, 2, 'Rush'
-        self.notes = notes      # For complex rules or conditions not easily captured
+        self.trigger = trigger
+        self.effect = effect
+        self.target = target
+        self.value = value
+        self.notes = notes
 
     def to_dict(self) -> Dict[str, Any]:
-        """Converts the ability to a dictionary for JSON serialization."""
         return self.__dict__
 
 class CardProfile:
-    """
-    Holds all relevant data for a single card, including its parsed abilities.
-    """
+    """Holds all relevant data for a single card, including its parsed abilities."""
     def __init__(self, card_name: str, unique_id: str, raw_text: str):
         self.card_name = card_name
         self.unique_id = unique_id
         self.raw_text = raw_text
-        self.parsed_abilities: List[ParsedAbility] = [] # To be populated in Task 1.2
+        self.parsed_abilities: List[ParsedAbility] = []
 
     def to_dict(self) -> Dict[str, Any]:
-        """Converts the card's profile to a dictionary."""
         return {
             'card_name': self.card_name,
             'unique_id': self.unique_id,
@@ -37,40 +33,106 @@ class CardProfile:
             'parsed_abilities': [ability.to_dict() for ability in self.parsed_abilities]
         }
 
-def design_abilities_data_structure():
+# --- Ability Parser (Task 1.2) ---
+
+def parse_ability_text(text: str) -> List[ParsedAbility]:
     """
-    Reads the master card dataset, defines the data structures for abilities,
-    and prepares the project for the manual parsing task (Task 1.2).
-    This script fulfills Task 1.1 of the project plan.
+    Translates raw card ability text into a list of structured ParsedAbility objects.
+    This is the core of the "Abilities Engine".
+
+    Analogy: This function is like a language translator. It reads a sentence in
+    "Lorcana English" and translates it into "Computer Logic" (our ParsedAbility class)
+    that the simulation engine can understand and execute.
+    """
+    parsed_abilities = []
+    
+    # Define patterns for keywords.
+    # Some are simple presence checks, others have values to extract.
+    keyword_patterns = {
+        # Keywords with no value
+        'Evasive': r'\bEvasive\b',
+        'Rush': r'\bRush\b',
+        'Ward': r'\bWard\b',
+        'Reckless': r'\bReckless\b',
+        'Vanish': r'\bVanish\b',
+        'Bodyguard': r'\bBodyguard\b',
+        'Support': r'\bSupport\b',
+        # Keywords with a numeric value
+        'Challenger': r'\bChallenger\s*\+\s*(\d+)\b',
+        'Resist': r'\bResist\s*\+\s*(\d+)\b',
+        'Shift': r'\bShift\s*(\d+)\b',
+        'Singer': r'\bSinger\s*(\d+)\b',
+    }
+
+    for keyword, pattern in keyword_patterns.items():
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            amount = True
+            notes = f"Character has the {keyword} keyword."
+            
+            # If the pattern has a capture group, it's a keyword with a numeric value.
+            if match.groups():
+                amount = int(match.group(1))
+                notes = f"Character has {keyword} with value {amount}."
+
+            parsed_abilities.append(ParsedAbility(
+                trigger="Passive",
+                effect="GainKeyword",
+                target="Self",
+                value={"keyword": keyword, "amount": amount},
+                notes=notes
+            ))
+
+    return parsed_abilities
+
+# --- Main Execution ---
+
+def create_abilities_database():
+    """
+    Reads the master card dataset, parses the ability text for each card,
+    and saves the structured data to a JSON file.
+    This script fulfills Task 1.2 of the project plan.
     """
     master_dataset_path = 'data/processed/lorcana_card_master_dataset.csv'
+    output_json_path = 'data/processed/lorcana_abilities_master.json'
     
     print(f"Loading master dataset from '{master_dataset_path}'...")
     try:
         df = pd.read_csv(master_dataset_path)
     except FileNotFoundError:
-        print(f"Error: Master dataset '{master_dataset_path}' not found. Please run Stage 1a first.")
+        print(f"Error: Master dataset '{master_dataset_path}' not found. Please run data collection scripts first.")
         return
 
     all_card_profiles: List[CardProfile] = []
+    parsed_count = 0
 
-    print("Processing cards to define data structures and extract raw ability text...")
-    # Iterate through each card to extract text that needs to be parsed in the next step.
+    print("Parsing abilities for all cards...")
     for _, row in df.iterrows():
-        # We only care about cards that have abilities described in their body text.
         raw_body_text = row['Body_Text'] if pd.notna(row['Body_Text']) else ""
-        if raw_body_text:
-            card_profile = CardProfile(
-                card_name=row['Name'],
-                unique_id=row['Unique_ID'],
-                raw_text=raw_body_text
-            )
-            all_card_profiles.append(card_profile)
+        
+        profile = CardProfile(
+            card_name=row['Name'],
+            unique_id=row['Unique_ID'],
+            raw_text=raw_body_text
+        )
 
-    print(f"Identified {len(all_card_profiles)} cards with ability text requiring translation.")
-    print("Defined 'ParsedAbility' and 'CardProfile' classes for holding structured data.")
-    print("The system is now ready for the implementation of the parsing logic in Task 1.2.")
-    print("\nTask 1.1 (Stage 1) is complete.")
+        if raw_body_text:
+            profile.parsed_abilities = parse_ability_text(raw_body_text)
+            if profile.parsed_abilities:
+                parsed_count += 1
+        
+        all_card_profiles.append(profile)
+
+    print(f"Successfully parsed abilities for {parsed_count} out of {len(all_card_profiles)} cards with text.")
+    
+    output_data = [profile.to_dict() for profile in all_card_profiles]
+
+    print(f"Saving structured abilities database to '{output_json_path}'...")
+    with open(output_json_path, 'w', encoding='utf-8') as f:
+        json.dump(output_data, f, indent=4, ensure_ascii=False)
+
+    print("\nTask 1.2 (Stage 1) is complete.")
+    print(f"Created '{output_json_path}' with structured ability data.")
 
 if __name__ == "__main__":
-    design_abilities_data_structure()
+    create_abilities_database()
