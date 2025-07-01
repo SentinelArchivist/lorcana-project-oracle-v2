@@ -1,6 +1,8 @@
 import random
 from typing import List, Dict, Optional, Any
 
+from . import player_logic
+
 class Card:
     """Represents a single instance of a card within a game."""
     def __init__(self, card_data: Dict[str, Any], owner_player_id: int):
@@ -179,6 +181,11 @@ class GameState:
         self._set_phase()
         self._draw_phase()
         if self.winner: return
+
+        # Main Phase - AI Logic
+        player = self.get_player(self.current_player_id)
+        player_logic.run_main_phase(self, player)
+
         self._check_win_conditions()
 
     def end_turn(self):
