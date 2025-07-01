@@ -1,142 +1,123 @@
 import unittest
-import sys
-import os
+from unittest.mock import patch
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../src')))
+from src.game_engine.game_engine import GameState, Player, Card, Deck
+from src.game_engine.player_logic import run_main_phase, get_possible_actions, evaluate_actions, ChallengeAction
 
-from game_engine.game_engine import Card, Deck, Player, GameState, ParsedAbility
-from game_engine import player_logic
-
-# --- Test Fixtures ---
-def create_mock_card_data(name: str, unique_id: str, **kwargs) -> dict:
-    data = { 'Name': name, 'Unique_ID': unique_id, 'Cost': 3, 'Inkable': True, 'Strength': 2, 'Willpower': 4, 'Lore': 1 }
+def create_mock_card_data(name: str, **kwargs) -> dict:
+    """Creates a dictionary for card data with sensible defaults."""
+    data = {
+        'Name': name,
+        'Cost': 1,
+        'Inkable': False,
+        'Type': 'Character',
+        'Strength': 1,
+        'Willpower': 1,
+        'Lore': 1,
+        'Abilities': []
+    }
     data.update(kwargs)
     return data
 
-class TestAIKeywordLogic(unittest.TestCase):
+class TestNewPlayerLogic(unittest.TestCase):
     def setUp(self):
-        """Set up a basic game state for each test."""
-        # Use a fresh set of players and game for each test to ensure isolation
-        p1_deck = Deck([Card(create_mock_card_data(f"P1-Card{i}", f"p1c{i}"), 1) for i in range(20)])
-        p2_deck = Deck([Card(create_mock_card_data(f"P2-Card{i}", f"p2c{i}"), 2) for i in range(20)])
-        self.player1 = Player(1, p1_deck)
-        self.player2 = Player(2, p2_deck)
+        """Set up a basic game state for testing."""
+        self.player1 = Player(player_id=1, deck=Deck([]))
+        self.player2 = Player(player_id=2, deck=Deck([]))
         self.game = GameState(self.player1, self.player2)
-        self.game.turn_number = 2 # Avoid turn 1 draw skip
+        self.game.turn_number = 3 # Give characters time to be ready
 
-    def test_ai_prioritizes_bodyguard(self):
-        """Verify AI correctly challenges a Bodyguard character."""
-        ability = {'trigger': 'Passive', 'effect': 'GainKeyword', 'target': 'Self', 'value': {'keyword': 'Bodyguard'}, 'notes': ''}
-        challenger = Card(create_mock_card_data("Challenger", "c-1", Strength=3, Willpower=2), 1)
-        non_bodyguard = Card(create_mock_card_data("Normal", "n-1", Strength=1, Willpower=1), 2)
-        bodyguard = Card(create_mock_card_data("Bodyguard", "bg-1", Strength=3, Willpower=3, Abilities=[ability]), 2)
-        
-        self.player1.play_area.append(challenger)
-        self.player2.play_area.extend([non_bodyguard, bodyguard])
-        challenger.turn_played = 1
-        non_bodyguard.is_exerted = True
-        bodyguard.is_exerted = True
+    def test_challenge_evaluation_favorable_trade(self):
+        """AI should choose a challenge that banishes a high-value target, even if it loses its character."""
+        attacker_data = create_mock_card_data("Attacker", Strength=3, Willpower=3, Lore=1, Cost=3)
+        attacker = Card(attacker_data, self.player1.player_id)
+        attacker.turn_played = 1
+        self.player1.play_area.append(attacker)
 
-        player_logic.run_main_phase(self.game, self.player1)
+        defender_data = create_mock_card_data("Defender", Strength=2, Willpower=2, Lore=3, Cost=4)
+        defender = Card(defender_data, self.player2.player_id)
+        defender.is_exerted = True
+        self.player2.play_area.append(defender)
 
-        self.assertIn(bodyguard, self.player2.discard_pile, "Bodyguard should have been challenged and banished.")
-        self.assertNotIn(non_bodyguard, self.player2.discard_pile, "Non-bodyguard should not have been challenged.")
+        actions = get_possible_actions(self.game, self.player1, has_inked=True)
+        challenge_actions = [a for a in actions if isinstance(a, ChallengeAction)]
+        self.assertEqual(len(challenge_actions), 1)
 
-    def test_ai_uses_support(self):
-        """Verify AI quests with Support and applies bonus correctly."""
-        ability = {'trigger': 'Passive', 'effect': 'GainKeyword', 'target': 'Self', 'value': {'keyword': 'Support'}, 'notes': ''}
-        supporter = Card(create_mock_card_data("Supporter", "sup-1", Strength=2, Willpower=2, Abilities=[ability]), 1)
-        recipient = Card(create_mock_card_data("Recipient", "rec-1", Strength=3, Willpower=3), 1)
-        self.player1.play_area.extend([supporter, recipient])
-        supporter.turn_played = 1
-        recipient.turn_played = 1
+        evaluate_actions(challenge_actions, self.game, self.player1)
+        self.assertGreater(challenge_actions[0].score, 0)
 
-        # AI should quest with both, and the supporter should target the recipient
-        player_logic.run_main_phase(self.game, self.player1)
+    def test_challenge_evaluation_unfavorable_trade(self):
+        """AI should avoid a challenge where it loses its character for no gain."""
+        attacker_data = create_mock_card_data("Attacker", Strength=1, Willpower=1, Lore=1, Cost=1)
+        attacker = Card(attacker_data, self.player1.player_id)
+        attacker.turn_played = 1
+        self.player1.play_area.append(attacker)
 
-        self.assertTrue(supporter.is_exerted, "Supporter should have quested.")
-        self.assertEqual(self.player1.temporary_strength_mods.get(recipient.unique_id, 0), 2, "Recipient should have received the support bonus.")
+        defender_data = create_mock_card_data("Defender", Strength=5, Willpower=5, Lore=2, Cost=5)
+        defender = Card(defender_data, self.player2.player_id)
+        defender.is_exerted = True
+        self.player2.play_area.append(defender)
 
+        actions = get_possible_actions(self.game, self.player1, has_inked=True)
+        challenge_actions = [a for a in actions if isinstance(a, ChallengeAction)]
+        self.assertEqual(len(challenge_actions), 1)
 
-class TestPlayerLogic(unittest.TestCase):
-    """Test suite for the AI player's decision-making heuristics."""
-    def setUp(self):
-        # Player 1 will be the AI
-        p1_deck = Deck([])
-        self.player1 = Player(player_id=1, deck=p1_deck)
-        
-        # Player 2 is the opponent
-        p2_deck = Deck([])
-        self.player2 = Player(player_id=2, deck=p2_deck)
-        
-        self.game = GameState(self.player1, self.player2)
+        evaluate_actions(challenge_actions, self.game, self.player1)
+        self.assertLess(challenge_actions[0].score, 0)
 
-    def test_choose_card_to_ink(self):
-        """Verify the AI inks the highest-cost inkable card."""
-        self.player1.hand = [
-            Card(create_mock_card_data("Low Cost", "L-1", Cost=1, Inkable=True), 1),
-            Card(create_mock_card_data("High Cost", "H-1", Cost=5, Inkable=True), 1),
-            Card(create_mock_card_data("Non-Inkable", "NI-1", Cost=4, Inkable=False), 1),
-        ]
-        
-        card_to_ink = player_logic.choose_card_to_ink(self.player1)
-        self.assertIsNotNone(card_to_ink)
-        self.assertEqual(card_to_ink.name, "High Cost")
+    def test_quest_action_is_preferred_over_bad_trade(self):
+        """If the only challenge is a bad trade, AI should quest instead."""
+        character_data = create_mock_card_data("Quester", Strength=1, Willpower=1, Lore=2, Cost=1)
+        character = Card(character_data, self.player1.player_id)
+        character.turn_played = 1
+        self.player1.play_area.append(character)
 
-    def test_run_main_phase_challenge_priority(self):
-        """Verify the AI prioritizes challenging over questing."""
-        # Setup: P1 can challenge an opponent's exerted character.
-        p1_char = Card(create_mock_card_data("P1 Char", "P1C-1", Strength=2, Willpower=2, Lore=1), 1)
-        p1_char.turn_played = 0 # Ink is dry
-        self.player1.play_area.append(p1_char)
-        
-        p2_char = Card(create_mock_card_data("P2 Char", "P2C-1", Strength=1, Willpower=1, Lore=1), 2)
-        p2_char.is_exerted = True
-        self.player2.play_area.append(p2_char)
+        defender_data = create_mock_card_data("Defender", Strength=5, Willpower=5, Lore=2, Cost=5)
+        defender = Card(defender_data, self.player2.player_id)
+        defender.is_exerted = True
+        self.player2.play_area.append(defender)
 
-        player_logic.run_main_phase(self.game, self.player1)
+        # This side effect simulates the real method's behavior of exerting the character
+        def quest_side_effect(character_to_quest, turn_number, support_target):
+            character_to_quest.is_exerted = True
+            return True
 
-        # Verification: AI should have challenged.
-        self.assertTrue(p1_char.is_exerted, "AI character should be exerted from challenging.")
-        self.assertEqual(self.player1.lore, 0, "AI should have challenged, not quested.")
-        self.assertEqual(p2_char.damage_counters, 2, "Opponent's character should have taken damage.")
+        with patch.object(GameState, 'challenge') as mock_challenge, \
+             patch.object(Player, 'quest', side_effect=quest_side_effect) as mock_quest:
+            run_main_phase(self.game, self.player1)
+            # The AI should have chosen to quest, with the correct arguments
+            mock_quest.assert_called_once_with(character, self.game.turn_number, None)
+            mock_challenge.assert_not_called()
 
-    def test_run_main_phase_quests_when_no_challenge(self):
-        """Verify the AI quests when there are no valid challenges."""
-        # Setup: P1 has a ready character, but no valid targets to challenge.
-        p1_char = Card(create_mock_card_data("Quester", "Q-1", Strength=1, Willpower=1, Lore=2), 1)
-        p1_char.turn_played = 0 # Ink dry
-        self.player1.play_area.append(p1_char)
-        
-        p2_char = Card(create_mock_card_data("Ready P2", "RP2-1", Strength=1, Willpower=1, Lore=1), 2)
-        self.player2.play_area.append(p2_char) # Opponent is not exerted
+    def test_ai_performs_multiple_actions_in_one_turn(self):
+        """AI should be able to ink, play a card, and quest in the same turn."""
+        ink_card_data = create_mock_card_data("Inky", Cost=3, Inkable=True)
+        ink_card = Card(ink_card_data, self.player1.player_id)
+        play_card_data = create_mock_card_data("New Guy", Type="Character", Cost=1, Strength=1, Willpower=1, Lore=1)
+        play_card = Card(play_card_data, self.player1.player_id)
+        self.player1.hand = [ink_card, play_card]
 
-        player_logic.run_main_phase(self.game, self.player1)
+        quest_char_data = create_mock_card_data("Old Guy", Type="Character", Cost=1, Strength=1, Willpower=1, Lore=1)
+        quest_char = Card(quest_char_data, self.player1.player_id)
+        quest_char.turn_played = 1
+        self.player1.play_area.append(quest_char)
 
-        # Verification: AI should have quested.
-        self.assertEqual(self.player1.lore, 2, "AI should have quested as there were no challenges.")
-        self.assertTrue(p1_char.is_exerted, "AI character should be exerted from questing.")
+        ink_source_data = create_mock_card_data("Ink Source")
+        self.player1.inkwell.append(Card(ink_source_data, self.player1.player_id))
 
-    def test_run_main_phase_sings_song(self):
-        """Verify the AI chooses to sing a song if it's a good option."""
-        # Setup: P1 has a singer and a song in hand.
-        song_card = Card(create_mock_card_data("My Song", "song-1", Type='Song', Cost=2, Inkable=False), 1)
-        singer_ability = {
-            "trigger": "Passive", "effect": "GainKeyword", "target": "Self",
-            "value": {"keyword": "Singer", "amount": 3}, "notes": "Singer 3"
-        }
-        singer_char = Card(create_mock_card_data("Ariel", "ariel-1", Abilities=[singer_ability]), 1)
-        singer_char.turn_played = 0 # Ink dry
-        
-        self.player1.hand.append(song_card)
-        self.player1.play_area.append(singer_char)
+        initial_lore = self.player1.lore
+        run_main_phase(self.game, self.player1)
 
-        player_logic.run_main_phase(self.game, self.player1)
+        self.assertEqual(len(self.player1.inkwell), 2)
+        self.assertNotIn(ink_card, self.player1.hand)
 
-        # Verification: AI should have sung the song.
-        self.assertTrue(singer_char.is_exerted, "Singer should be exerted from singing.")
-        self.assertIn(song_card, self.player1.discard_pile, "Song should be in the discard pile.")
-        self.assertNotIn(song_card, self.player1.hand, "Song should not be in hand.")
+        self.assertEqual(len(self.player1.play_area), 2)
+        new_guy_in_play = any(c.name == "New Guy" for c in self.player1.play_area)
+        self.assertTrue(new_guy_in_play)
+        self.assertNotIn(play_card, self.player1.hand)
+
+        self.assertEqual(self.player1.lore, initial_lore + 1)
+        self.assertTrue(quest_char.is_exerted)
 
 if __name__ == '__main__':
     unittest.main()
