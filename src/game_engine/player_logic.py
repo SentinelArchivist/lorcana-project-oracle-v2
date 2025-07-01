@@ -78,6 +78,18 @@ class SingAction(Action):
     def __repr__(self):
         return f"SingAction(song={self.song_card.name}, singer={self.singer.name}, score={self.score})"
 
+class ActivateAbilityAction(Action):
+    def __init__(self, character: 'Card', ability_index: int):
+        super().__init__()
+        self.character = character
+        self.ability_index = ability_index
+
+    def execute(self, game: 'GameState', player: 'Player'):
+        player.activate_ability(self.character, self.ability_index, game.turn_number)
+
+    def __repr__(self):
+        return f"ActivateAbilityAction: Use {self.character.name}'s ability #{self.ability_index}, score={self.score}"
+
 # --- Heuristics and Evaluation ---
 
 def evaluate_actions(actions: List[Action], game: 'GameState', player: 'Player'):
@@ -144,6 +156,13 @@ def evaluate_actions(actions: List[Action], game: 'GameState', player: 'Player')
             # Singing a song is good tempo. Score it higher than just playing the card.
             action.score = action.song_card.cost # Free value is good
 
+        elif isinstance(action, ActivateAbilityAction):
+            ability = action.character.abilities[action.ability_index]
+            if ability.effect == "DrawCard":
+                action.score = 28 # Drawing cards is very good
+            else:
+                action.score = 10 # Default for other abilities for now
+
 def get_possible_actions(game: 'GameState', player: 'Player', has_inked: bool) -> List[Action]:
     """Enumerates all legal actions the player can take."""
     actions: List[Action] = []
@@ -184,7 +203,13 @@ def get_possible_actions(game: 'GameState', player: 'Player', has_inked: bool) -
             for defender in target_pool:
                 actions.append(ChallengeAction(attacker, defender))
                 
-    # 5. Sing actions
+    # 5. Use activated abilities
+    for character in ready_characters:
+        for i, ability in enumerate(character.abilities):
+            if ability.trigger == "Activated":
+                actions.append(ActivateAbilityAction(character, i))
+
+    # 6. Sing actions
     singable_songs = [c for c in player.hand if c.card_type == 'Song']
     possible_singers = [char for char in ready_characters if char.has_keyword('Singer')]
     for song in singable_songs:

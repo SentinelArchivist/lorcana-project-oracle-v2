@@ -2,18 +2,7 @@ import random
 from typing import List, Dict, Optional, Any
 
 from . import player_logic
-
-class ParsedAbility:
-    """A simple structure to hold parsed ability data."""
-    def __init__(self, trigger: str, effect: str, target: str, value: Any, notes: str):
-        self.trigger = trigger
-        self.effect = effect
-        self.target = target
-        self.value = value
-        self.notes = notes
-
-    def __repr__(self) -> str:
-        return f"Ability(trigger={self.trigger}, effect={self.effect}, value={self.value})"
+from src.abilities.create_abilities_database import ParsedAbility
 
 class Card:
     """Represents a single instance of a card within a game."""
@@ -37,13 +26,16 @@ class Card:
         return f"Card({self.name})"
 
     def has_keyword(self, keyword: str) -> bool:
-        """Check if the card has a specific keyword ability."""
-        return any(ability.value.get('keyword') == keyword for ability in self.abilities)
+        """Checks if a card has a specific keyword ability."""
+        for ability in self.abilities:
+            if isinstance(ability.value, dict) and ability.value.get('keyword') == keyword:
+                return True
+        return False
 
     def get_keyword_value(self, keyword: str) -> Any:
         """Get the value associated with a keyword (e.g., Singer's cost)."""
         for ability in self.abilities:
-            if ability.value.get('keyword') == keyword:
+            if isinstance(ability.value, dict) and ability.value.get('keyword') == keyword:
                 return ability.value.get('amount')
         return None
 
@@ -156,13 +148,47 @@ class Player:
             self.lore += character.lore
 
             # Handle Support keyword
-            if character.has_keyword('Support') and support_target and support_target in self.play_area:
-                support_value = character.strength or 0
-                current_bonus = self.temporary_strength_mods.get(support_target.unique_id, 0)
-                self.temporary_strength_mods[support_target.unique_id] = current_bonus + support_value
+            if character.has_keyword('Support') and support_target:
+                if support_target in self.play_area and support_target != character:
+                    support_value = character.strength or 0
+                    self.temporary_strength_mods[support_target.unique_id] = self.temporary_strength_mods.get(support_target.unique_id, 0) + support_value
 
             return True
         return False
+
+    def activate_ability(self, character: Card, ability_index: int, game_turn: int) -> bool:
+        """Activates a character's ability. Returns True on success."""
+        if not (character in self.play_area and self._can_character_act(character, game_turn)):
+            return False
+
+        if not (0 <= ability_index < len(character.abilities)):
+            return False  # Invalid ability index
+
+        ability = character.abilities[ability_index]
+        if ability.trigger != "Activated":
+            return False  # Not an activated ability
+
+        # For now, assume the only cost is exerting the character.
+        # This will be expanded later to handle ink costs, etc.
+        character.is_exerted = True
+
+        # --- Execute the effect ---
+        effect_executed = False
+        if ability.effect == "DrawCard" and ability.target == "Player":
+            for _ in range(ability.value):
+                card = self.deck.draw()
+                if card:
+                    card.location = 'hand'
+                    self.hand.append(card)
+            effect_executed = True
+        # TODO: Add more ability effects here (e.g., DealDamage, Heal, etc.)
+
+        if not effect_executed:
+            # If we didn't recognize the effect, revert the cost
+            character.is_exerted = False
+            return False
+
+        return True
 
 class GameState:
     """The main container for the entire state of a single game."""

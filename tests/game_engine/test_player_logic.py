@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 from src.game_engine.game_engine import GameState, Player, Card, Deck
 from src.game_engine.player_logic import run_main_phase, get_possible_actions, evaluate_actions, ChallengeAction
+from src.abilities.create_abilities_database import ParsedAbility
 
 def create_mock_card_data(name: str, **kwargs) -> dict:
     """Creates a dictionary for card data with sensible defaults."""
@@ -118,6 +119,33 @@ class TestNewPlayerLogic(unittest.TestCase):
 
         self.assertEqual(self.player1.lore, initial_lore + 1)
         self.assertTrue(quest_char.is_exerted)
+
+    def test_ai_chooses_to_activate_ability(self):
+        """AI should choose to use a high-value activated ability like drawing a card."""
+        # Create a character with an activated ability to draw a card
+        ability_data = {"trigger": "Activated", "effect": "DrawCard", "target": "Player", "value": 1}
+        char_data = create_mock_card_data("Wise Owl", Abilities=[ability_data])
+        character = Card(char_data, self.player1.player_id)
+        character.turn_played = 1
+        self.player1.play_area.append(character)
+
+        # Mock the relevant methods
+        with patch.object(Player, 'activate_ability') as mock_activate_ability, \
+             patch.object(Player, 'quest') as mock_quest:
+            
+            # Set a side effect for activate_ability to simulate exertion
+            def activate_side_effect(char, index, turn):
+                char.is_exerted = True
+                return True
+            mock_activate_ability.side_effect = activate_side_effect
+
+            run_main_phase(self.game, self.player1)
+
+            # Assert that the AI chose to activate the ability
+            mock_activate_ability.assert_called_once_with(character, 0, self.game.turn_number)
+            
+            # Assert that the AI did not quest, since drawing a card is a higher priority
+            mock_quest.assert_not_called()
 
 if __name__ == '__main__':
     unittest.main()

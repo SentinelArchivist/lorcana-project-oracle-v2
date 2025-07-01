@@ -83,6 +83,21 @@ def parse_ability_text(text: str) -> List[ParsedAbility]:
                 notes=notes
             ))
 
+    # Pattern for activated abilities, e.g., "{EXERT} - Draw a card."
+    # This is a simplified example focusing on a common pattern.
+    activated_ability_pattern = re.compile(r'\{\s*EXERT\s*\}\s*-\s*(.+)', re.IGNORECASE)
+    for match in activated_ability_pattern.finditer(text):
+        effect_text = match.group(1).strip()
+        # Simple mapping from text to structured effect
+        if 'draw a card' in effect_text.lower():
+            parsed_abilities.append(ParsedAbility(
+                trigger="Activated",
+                effect="DrawCard",
+                target="Player",
+                value=1,
+                notes=f"Activated ability: {effect_text}"
+            ))
+
     return parsed_abilities
 
 # --- Main Execution ---
