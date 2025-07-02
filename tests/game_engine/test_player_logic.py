@@ -8,7 +8,7 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..
 sys.path.insert(0, project_root)
 
 from src.game_engine.game_engine import GameState, Player, Card, Deck
-from src.game_engine.player_logic import run_main_phase, get_possible_actions, evaluate_actions, ChallengeAction, PlayCardAction
+from src.game_engine.player_logic import run_main_phase, get_possible_actions, evaluate_actions, ChallengeAction, PlayCardAction, ActivateAbilityAction
 from src.abilities.create_abilities_database import ParsedAbility
 
 def create_mock_card_data(name: str, **kwargs) -> dict:
@@ -219,6 +219,79 @@ class TestNewPlayerLogic(unittest.TestCase):
 
         self.assertEqual(shift_action.card, shift_char, "The action should be for the shift character")
         self.assertEqual(shift_action.shift_target, base_char, "The action should target the base character for shifting")
+
+
+
+    def test_ai_evaluates_playing_item_card(self):
+        """AI should assign a positive score to playing a beneficial item card."""
+        # 1. Setup
+        # Item that lets the player draw a card
+        item_ability = ParsedAbility(trigger='OnPlay', effect='DrawCard', value={'amount': 1}, target='Self')
+        item_card_data = create_mock_card_data('Magic Mirror', Type='Item', Cost=2, Abilities=[item_ability.to_dict()], Strength=None, Willpower=None, Lore=None)
+        item_card = Card(item_card_data, self.player1.player_id)
+        self.player1.hand.append(item_card)
+
+        # Player has enough ink
+        self.player1.inkwell = [Card(create_mock_card_data(f"Ink {i}", Inkable=True), self.player1.player_id) for i in range(3)]
+
+        # 2. Action
+        actions = get_possible_actions(self.game, self.player1, has_inked=True)
+        play_item_action = next((a for a in actions if isinstance(a, PlayCardAction) and a.card == item_card), None)
+
+        # Ensure the action was generated
+        self.assertIsNotNone(play_item_action, "Action to play the item card should be generated.")
+
+        # Evaluate the action
+        evaluate_actions([play_item_action], self.game, self.player1)
+
+        # 3. Assert
+        self.assertGreater(play_item_action.score, 0, "Playing a card-drawing item should have a positive score.")
+
+
+    def test_ai_evaluates_playing_location_card(self):
+        """AI should assign a positive score to playing a beneficial location card."""
+        # 1. Setup
+        # Location that provides passive lore
+        location_card_data = create_mock_card_data('McDuck Manor', Type='Location', Cost=3, Lore=1, Willpower=7, Strength=None)
+        location_card = Card(location_card_data, self.player1.player_id)
+        self.player1.hand.append(location_card)
+
+        # Player has enough ink
+        self.player1.inkwell = [Card(create_mock_card_data(f"Ink {i}", Inkable=True), self.player1.player_id) for i in range(4)]
+
+        # 2. Action
+        actions = get_possible_actions(self.game, self.player1, has_inked=True)
+        play_location_action = next((a for a in actions if isinstance(a, PlayCardAction) and a.card == location_card), None)
+
+        self.assertIsNotNone(play_location_action, "Action to play the location card should be generated.")
+
+        evaluate_actions([play_location_action], self.game, self.player1)
+
+        # 3. Assert
+        self.assertGreater(play_location_action.score, 0, "Playing a location that generates lore should have a positive score.")
+
+
+    def test_ai_uses_item_activated_ability(self):
+        """AI should generate and highly score an action to use an item's activated ability."""
+        # 1. Setup
+        # Item with an activated ability to draw a card
+        item_ability = ParsedAbility(trigger='Activated', effect='DrawCard', value={'amount': 1}, target='Self', cost={'exert': True})
+        item_card_data = create_mock_card_data('Fishbone Quill', Type='Item', Cost=1, Abilities=[item_ability.to_dict()], Strength=None, Willpower=None, Lore=None)
+        item_card = Card(item_card_data, self.player1.player_id)
+        item_card.is_exerted = False # Make sure it's ready to be used
+        self.player1.play_area.append(item_card)
+
+        # 2. Action
+        actions = get_possible_actions(self.game, self.player1, has_inked=True)
+        activate_ability_action = next((a for a in actions if isinstance(a, ActivateAbilityAction) and a.card == item_card), None)
+
+        self.assertIsNotNone(activate_ability_action, "Action to activate the item's ability should be generated.")
+
+        # Evaluate the action
+        evaluate_actions([activate_ability_action], self.game, self.player1)
+
+        # 3. Assert
+        self.assertGreater(activate_ability_action.score, 20, "Activating a card-drawing item ability should have a very high score.")
 
 
 if __name__ == '__main__':

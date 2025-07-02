@@ -301,26 +301,26 @@ class Player:
                 character.location = 'discard'
                 self.discard_pile.append(character)
 
-    def activate_ability(self, character: Card, ability_index: int, game_turn: int) -> bool:
-        """Activates a character's ability. Returns True on success."""
-        if not (character in self.play_area and self._can_character_act(character, game_turn)):
+    def activate_ability(self, card: Card, ability_index: int, game_turn: int) -> bool:
+        """Activates a card's ability. Returns True on success."""
+        if not (card in self.play_area and not card.is_exerted):
             return False
 
-        if not (0 <= ability_index < len(character.abilities)):
+        if not (0 <= ability_index < len(card.abilities)):
             return False  # Invalid ability index
 
-        ability = character.abilities[ability_index]
-        if ability.trigger.get('primary_trigger') != "Activated":
+        ability = card.abilities[ability_index]
+        if ability.trigger != "Activated":
             return False  # Not an activated ability
 
         # For now, assume the only cost is exerting the character.
         # This will be expanded later to handle ink costs, etc.
-        character.is_exerted = True
+        card.is_exerted = True
 
         # --- Execute the effect ---
         self.game.effect_resolver.resolve_effect(
             ability,
-            source_card=character,
+            source_card=card,
             source_player=self,
             chosen_targets=None  # Activated abilities might need targets later
         )

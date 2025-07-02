@@ -68,30 +68,23 @@ This document outlines the step-by-step plan to complete Project Oracle, buildin
 - **Action:** Add the logic for playing and interacting with these card types to the game engine.
 
 **- [x] Task 2.11: Implement all remaining keywords**
-  - [x] Implement `Evasive` keyword logic and tests
-  - [x] Implement `Rush` keyword logic and tests
-  - [x] Implement `Ward` keyword logic and tests
-  - [x] Implement `Reckless` keyword logic and tests
-  - [x] Implement `Shift` keyword logic and tests
-    - [x] Create failing test for Shift mechanic
-    - [x] Implement `can_play_with_shift` and `get_base_name` methods
-    - [x] Update `Player.play_card` to handle Shift plays
-    - [x] Update AI (`get_possible_actions`) to generate Shift actions
-    - [x] Verify all tests pass and fix regressions
-  - [x] Implement `Bodyguard` keyword logic and tests
-  - [x] Implement `Challenger` keyword logic and tests
-  - [x] Implement `Resist` keyword logic and tests
-  - [x] Implement `Singer` keyword logic and tests
-  - [x] Implement `Support` keyword logic and tests
-  - [x] Implement `Vanish` keyword logic and tests
+- **Action:** Implement and test all remaining keywords (`Evasive`, `Rush`, `Ward`, `Reckless`, `Shift`, `Bodyguard`, `Challenger`, `Resist`, `Singer`, `Support`, `Vanish`).
+- **Details:** This involved updating the game engine, AI logic, and creating comprehensive unit tests to ensure each keyword functions correctly according to the game rules. All tests pass.
 
-**Task 2.12: AI Integration of New Mechanics**
+**[x] Task 2.12: AI Integration of New Mechanics**
 - **Action:** Teach the AI in `player_logic.py` how to use Items, Locations, and the full suite of abilities.
-- **Details:** The action-enumeration and heuristic-evaluation functions will need significant expansion.
+- **Details:** The action-enumeration and heuristic-evaluation functions were expanded to support new card types and abilities.
+- **Sub-tasks:**
+  - **[x] Enhance `ParsedAbility` for Costs:** Updated the `ParsedAbility` class to include a `cost` attribute, enabling representation of activated ability costs (e.g., exerting).
+  - **[x] AI Evaluation for Item Cards:** Implemented heuristics in `evaluate_actions` for the AI to score `PlayCardAction` for Items based on their `OnPlay` abilities (e.g., card draw).
+  - **[x] AI Evaluation for Location Cards:** Implemented heuristics in `evaluate_actions` for the AI to score `PlayCardAction` for Locations, valuing their passive lore generation and willpower.
+  - **[x] AI Usage of Activated Abilities:** Confirmed the AI's `get_possible_actions` can generate `ActivateAbilityAction` for non-character cards (like Items) and that `evaluate_actions` scores them appropriately.
 
 **Task 2.13: Advanced Heuristics**
 - **Action:** Improve the AI's strategic thinking.
 - **Details:** It needs to understand board state, resource planning, and how to leverage its specific cards and their synergies.
+- **Sub-tasks:**
+  - **[ ] Implement AoE Heuristics:** Teach the AI to evaluate abilities that affect multiple targets (e.g., 'Deal 1 damage to all opposing characters') by scaling the action's score based on the number of targets affected.
 
 ## Stage 3: The Deck Generator and Genetic Algorithm (The Breeder)
 

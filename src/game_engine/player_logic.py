@@ -82,16 +82,16 @@ class SingAction(Action):
         return f"SingAction(song={self.song_card.name}, singer={self.singer.name}, score={self.score})"
 
 class ActivateAbilityAction(Action):
-    def __init__(self, character: 'Card', ability_index: int):
+    def __init__(self, card: 'Card', ability_index: int):
         super().__init__()
-        self.character = character
+        self.card = card
         self.ability_index = ability_index
 
     def execute(self, game: 'GameState', player: 'Player'):
-        player.activate_ability(self.character, self.ability_index, game.turn_number)
+        player.activate_ability(self.card, self.ability_index, game.turn_number)
 
     def __repr__(self):
-        return f"ActivateAbilityAction: Use {self.character.name}'s ability #{self.ability_index}, score={self.score}"
+        return f"ActivateAbilityAction: Use {self.card.name}'s ability #{self.ability_index}, score={self.score}"
 
 # --- Heuristics and Evaluation ---
 
@@ -145,10 +145,26 @@ def evaluate_actions(actions: List[Action], game: 'GameState', player: 'Player')
             action.score = score
 
         elif isinstance(action, PlayCardAction):
-            # Simple heuristic: score is based on stats for cost.
+            # Heuristic: score is based on card type, stats, cost, and abilities.
             card = action.card
-            stats_score = (card.strength or 0) + (card.willpower or 0) + (card.lore or 0)
-            action.score = stats_score - card.cost
+            score = 0
+
+            if card.card_type == 'Location':
+                # Locations are high value for their passive lore generation.
+                # Estimate value over ~3 turns + survivability.
+                score = ((card.lore or 0) * 3) + (card.willpower or 0) - card.cost
+            else:
+                # For Characters and Items
+                score = (card.strength or 0) + (card.willpower or 0) + (card.lore or 0) - card.cost
+
+            # Add score for beneficial OnPlay abilities for any card type
+            for ability in card.abilities:
+                if ability.trigger == 'OnPlay':
+                    if ability.effect == 'DrawCard':
+                        # Drawing a card is very valuable.
+                        score += 28
+
+            action.score = score
 
         elif isinstance(action, InkAction):
             # Inking is generally a setup move, so it should have a low but positive score
@@ -160,11 +176,13 @@ def evaluate_actions(actions: List[Action], game: 'GameState', player: 'Player')
             action.score = action.song_card.cost # Free value is good
 
         elif isinstance(action, ActivateAbilityAction):
-            ability = action.character.abilities[action.ability_index]
-            if ability.effect == "DrawCard":
-                action.score = 28 # Drawing cards is very good
+            ability = action.card.abilities[action.ability_index]
+            # Heuristic: score based on the effect.
+            # This is a simplified placeholder. A real AI would have complex scoring.
+            if ability.effect == 'DrawCard':
+                action.score = 25 # Drawing is very good
             else:
-                action.score = 10 # Default for other abilities for now
+                action.score = 5 # Generic positive score for doing something
 
 def get_possible_actions(game: 'GameState', player: 'Player', has_inked: bool) -> List[Action]:
     """Enumerates all legal actions the player can take, respecting keywords like Reckless."""
@@ -236,6 +254,13 @@ def get_possible_actions(game: 'GameState', player: 'Player', has_inked: bool) -
                 # Check if the singer can sing this song for free
                 if char.get_keyword_value('Singer') >= song.cost:
                     actions.append(SingAction(song, char))
+
+    # 4. Item actions (Abilities)
+    ready_items = [c for c in player.play_area if c.card_type == 'Item' and not c.is_exerted]
+    for item in ready_items:
+        for i, ability in enumerate(item.abilities):
+            if ability.trigger == "Activated":
+                actions.append(ActivateAbilityAction(item, i))
 
     return actions
 

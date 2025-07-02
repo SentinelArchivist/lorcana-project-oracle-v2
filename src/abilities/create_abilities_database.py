@@ -7,11 +7,12 @@ from typing import List, Dict, Optional, Any
 
 class ParsedAbility:
     """Represents a single, machine-readable game ability."""
-    def __init__(self, trigger: Dict[str, Any], effect: str, target: str, value: Any, condition: Optional[Dict[str, Any]] = None, duration: Optional[str] = None, notes: str = ""):
+    def __init__(self, trigger: Dict[str, Any], effect: str, target: str, value: Any, cost: Optional[Dict[str, Any]] = None, condition: Optional[Dict[str, Any]] = None, duration: Optional[str] = None, notes: str = ""):
         self.trigger = trigger
         self.effect = effect
         self.target = target
         self.value = value
+        self.cost = cost
         self.condition = condition
         self.duration = duration
         self.notes = notes
@@ -22,6 +23,7 @@ class ParsedAbility:
             "effect": self.effect,
             "target": self.target,
             "value": self.value,
+            "cost": self.cost,
             "condition": self.condition,
             "duration": self.duration,
             "notes": self.notes
