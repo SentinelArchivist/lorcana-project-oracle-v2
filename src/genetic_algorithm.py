@@ -7,7 +7,7 @@ from src.evolution import FitnessCalculator
 class GeneticAlgorithm:
     """Manages the genetic algorithm process for evolving Lorcana decks."""
 
-    def __init__(self, deck_generator: DeckGenerator, fitness_calculator: FitnessCalculator, population_size: int, num_generations: int, num_parents_mating: int):
+    def __init__(self, deck_generator: DeckGenerator, fitness_calculator: FitnessCalculator, population_size: int, num_generations: int, num_parents_mating: int, on_generation_callback=None):
         """
         Initializes the Genetic Algorithm.
 
@@ -17,14 +17,17 @@ class GeneticAlgorithm:
             population_size (int): The number of decks to generate for the population.
             num_generations (int): The number of generations to run the evolution for.
             num_parents_mating (int): The number of parents to select for mating.
+            on_generation_callback (callable, optional): A function to call after each generation. Defaults to None.
         """
         self.deck_generator = deck_generator
         self.fitness_calculator = fitness_calculator
         self.population_size = population_size
         self.num_generations = num_generations
         self.num_parents_mating = num_parents_mating
+        self.on_generation_callback = on_generation_callback
         self.best_solution = None
         self.best_solution_fitness = -1
+        self.best_solution_detailed_results = {}
 
         self.initial_population = self.create_initial_population()
 
@@ -118,21 +121,31 @@ class GeneticAlgorithm:
     def _fitness_function_wrapper(self, ga_instance, solution, solution_idx):
         """
         A wrapper for the fitness function to be compatible with pygad.
-
-        Args:
-            ga_instance: The pygad instance (unused, but required by the library).
-            solution (list[int]): The deck (chromosome of card IDs) to be evaluated.
-            solution_idx (int): The index of the solution in the population.
-
-        Returns:
-            float: The fitness value of the solution.
+        It stores detailed results for the best solution found.
         """
         deck_names = [self.deck_generator.id_to_card[gene] for gene in solution]
-        return self.fitness_calculator.calculate_fitness(deck_names)
+        fitness, detailed_results = self.fitness_calculator.calculate_fitness(deck_names)
+
+        # The best_solution attribute is a tuple of (solution, fitness, idx).
+        # It's only updated after a generation, so this check is against the last gen's best.
+        # This is sufficient for our purpose of capturing the detailed results for the new best.
+        current_best_fitness = -1
+        if ga_instance.best_solution_generation != -1:
+            current_best_fitness = ga_instance.best_solution()[1]
+
+        if fitness > current_best_fitness:
+            self.best_solution_detailed_results = detailed_results
+
+        return fitness
 
     def _on_generation(self, ga_instance):
-        """Callback function for on_generation to print progress."""
+        """Callback function for on_generation to print progress and notify external listeners."""
+        # Internal logging
         print(f"Generation {ga_instance.generations_completed:3} | Best Fitness = {ga_instance.best_solution()[1]:.4f}")
+
+        # External callback
+        if self.on_generation_callback:
+            self.on_generation_callback(ga_instance)
 
     def _on_stop(self, ga_instance, last_fitness_values):
         """Callback function for on_stop."""
@@ -143,7 +156,7 @@ class GeneticAlgorithm:
         Configures and runs the genetic algorithm evolution process.
         """
         initial_population_lists = [list(deck) for deck in self.initial_population]
-        gene_space = range(len(self.deck_generator.unique_card_names))
+        gene_space = self.deck_generator.id_to_card
 
         ga_instance = pygad.GA(
             num_generations=self.num_generations,

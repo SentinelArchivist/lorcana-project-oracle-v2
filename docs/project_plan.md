@@ -123,14 +123,14 @@ This document outlines the step-by-step plan to complete Project Oracle, buildin
 
 *The final stage is to present the results to the user.*
 
-**[ ] Task 4.1: Design the Simple UI**
+**[x] Task 4.1: Design the Simple UI**
 - **Action:** Create a main application file (`main.py`).
-- **Details:** Use `PySimpleGUI` to build the simple user interface described in the devspec. This includes a start/stop button, a log area, a progress bar, an accurate estimated time to completion,and a display for the best decklist so far with relevant stats.
+- **Details:** Use `tkinter` to build the simple user interface described in the devspec. This includes a start/stop button, a log area, a progress bar, an accurate estimated time to completion,and a display for the best decklist so far with relevant stats.
 
-**[ ] Task 4.2: Integrate All Components**
+**[x] Task 4.2: Integrate All Components**
 - **Action:** In `main.py`, wire the UI to the backend logic.
 - **Details:** The 'Start' button will trigger the `evolution.py` script, which in turn uses the `game_engine.py` to evaluate decks. The UI will be updated in real-time with the progress and the best deck found so far.
 
-**[ ] Task 4.3: Final Output Display**
+**[x] Task 4.3: Final Output Display**
 - **Action:** Add logic to `main.py` to format and display the final results.
 - **Details:** When the evolution process is complete, the UI will display the champion decklist, its overall win rate, and its performance against each of the pillar meta decks. Make sure it includes a full decklist along with the win rate against each pillar meta deck.
