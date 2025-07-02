@@ -90,6 +90,12 @@ This document outlines the step-by-step plan to complete Project Oracle, buildin
 
 ## Stage 3: The Deck Generator and Genetic Algorithm (The Breeder)
 
+*With a functional game engine, we can now automate deck testing and evolution.*
+
+**[x] Task 3.1: Implement the Deck Generator**
+- **Action:** Create a new file (`deck_generator.py`).
+- **Details:** Write a function that creates an initial population of quasi-random, but legal and "resembling the meta competitive decks in terms of makeup" (60 cards, 2 inks, max 4 copies per card, most cards have 4 copies, etc.) decks using the `lorcana_card_master_dataset.csv`. The program should generate enough decks to fulfill the application's goals, but few enough that the program will ultimately be able to complete a full run in a few minutes tops.
+
 **[x] Task 3.2: Implement and Test the Fitness Function**
 - **Action:** Create the `FitnessCalculator` to evaluate deck strength through simulation.
 - **Details:** The calculator will simulate a candidate deck against a gauntlet of meta decks and return a win rate as its fitness score. This is the core of the genetic algorithm's evaluation phase.
@@ -100,25 +106,18 @@ This document outlines the step-by-step plan to complete Project Oracle, buildin
   - **[x] Fix simulation loop and all integration bugs.**
   - **[x] Verify all `test_evolution.py` tests pass.**
 
-*With a functional game engine, we can now automate deck testing and evolution.*
-
-**[ ] Task 3.1: Implement the Deck Generator**
-- **Action:** Create a new file (`deck_generator.py`).
-- **Details:** Write a function that creates an initial population of quasi-random, but legal and "resembling the meta competitive decks in terms of makeup" (60 cards, 2 inks, max 4 copies per card, most cards have 4 copies, etc.) decks using the `lorcana_card_master_dataset.csv`. The program should generate enough decks to fulfill the application's goals, but few enough that the program will ultimately be able to complete a full run in a few minutes tops.
-
-**[ ] Task 3.2: Build the Fitness Function**
-- **Action:** Create a new file (`evolution.py`).
-- **Details:** The fitness function will determine a deck's strength by simulating a series of games against a pool of representative "meta" decks. The fitness score will be the deck's win rate.
-  - [ ] Create `evolution.py` with a `FitnessCalculator` class.
-  - [ ] Implement a placeholder `simulate_game` method that allows for testing the fitness calculation logic.
-  - [ ] Create a test suite (`test_evolution.py`) that uses mocking to verify the win-rate calculation is correct.
-  - [ ] Replace the placeholder simulation with a full game simulation using the `GameState` and `Player` classes.
-  - [ ] Integrate the `DeckGenerator` to create a pool of meta decks for evaluation.
-- **Details:** Write the core fitness function. This function will take a single decklist, simulate a small number of games (perhaps 20 games) against each of the pillar decks from `lorcana_metagame_decks.csv` using the `game_engine`, and return the overall win rate.
-
-**[ ] Task 3.3: Implement the Genetic Algorithm**
-- **Action:** Use the `PyGAD` library within `evolution.py`.
-- **Details:** Configure the genetic algorithm with the fitness function. Implement the custom crossover logic that respects the two-ink-color rule and the mutation logic. Importantly, all new decks should continue to conform to "legal and 'resembling the meta competitive decks in terms of makeup' (60 cards, 2 inks, max 4 copies per card, most cards have 4 copies, etc.)".
+**[x] Task 3.3: Implement the Genetic Algorithm**
+- **Action:** Integrate the `pygad` library to drive the deck evolution process.
+- **Details:** Use the `FitnessCalculator` as the fitness function. Define a gene space that represents a 60-card deck and implement custom crossover and mutation operators that respect the deck-building rules (ink colors, max copies). The entire GA was refactored to use integer-based card IDs for compatibility with `pygad`, a core architectural decision.
+- **Sub-tasks:**
+  - **[x] Create `GeneticAlgorithm` class and initial test suite (TDD setup).**
+  - **[x] Implement initialization logic and verify with tests.**
+  - **[x] Refactor GA to use integer-based card IDs.**
+  - **[x] Integrate `FitnessCalculator` as the fitness function wrapper.**
+  - **[x] Implement custom crossover logic ensuring deck legality.**
+  - **[x] Implement custom mutation logic ensuring deck legality.**
+  - **[x] Configure and run the GA instance, resolving all `pygad` integration issues.**
+  - **[x] Create `main.py` script to run the full evolution process.**
 
 ## Stage 4: User Interface and Final Integration
 
@@ -126,7 +125,7 @@ This document outlines the step-by-step plan to complete Project Oracle, buildin
 
 **[ ] Task 4.1: Design the Simple UI**
 - **Action:** Create a main application file (`main.py`).
-- **Details:** Use `PySimpleGUI` to build the simple user interface described in the devspec. This includes a start/stop button, a log area, a progress bar, and a display for the best decklist.
+- **Details:** Use `PySimpleGUI` to build the simple user interface described in the devspec. This includes a start/stop button, a log area, a progress bar, an accurate estimated time to completion,and a display for the best decklist so far with relevant stats.
 
 **[ ] Task 4.2: Integrate All Components**
 - **Action:** In `main.py`, wire the UI to the backend logic.

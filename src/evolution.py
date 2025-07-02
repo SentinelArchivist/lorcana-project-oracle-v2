@@ -32,8 +32,6 @@ class FitnessCalculator:
                 card_data = card_data_rows.iloc[0].to_dict()
                 card_objects.append(Card(card_data, owner_player_id=player_id))
             else:
-                # This can happen if a card name in a deck list isn't in the master dataset.
-                # For now, we'll log a warning and skip it.
                 print(f"Warning: Card '{card_name}' not found in dataset. Skipping.")
         
         deck = Deck(card_objects)
