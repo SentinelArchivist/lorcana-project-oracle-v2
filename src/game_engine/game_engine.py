@@ -13,8 +13,27 @@ class Card:
         self.inkable = card_data.get('Inkable', False)
         self.lore = card_data.get('Lore', 0)
         self.card_type = card_data.get('Type', 'Character') # Character, Action, Item
-        self.keywords = card_data.get('Keywords', [])
-        self.abilities = [ParsedAbility(**ability) for ability in card_data.get('Abilities', [])]
+        # Robustly handle Keywords data
+        keywords_data = card_data.get('Keywords')
+        if isinstance(keywords_data, str):
+            self.keywords = [kw.strip() for kw in keywords_data.split(',')]
+        elif isinstance(keywords_data, list):
+            self.keywords = keywords_data
+        else:
+            self.keywords = []  # Handles NaN, None, etc.
+
+        # Robustly handle Abilities data
+        abilities_data = card_data.get('Abilities')
+        if isinstance(abilities_data, str):
+            try:
+                abilities_data = eval(abilities_data)
+            except (SyntaxError, NameError):
+                abilities_data = []
+        
+        if not isinstance(abilities_data, list):
+            abilities_data = []
+
+        self.abilities = [ParsedAbility(**ability) for ability in abilities_data]
         self.owner_player_id = owner_player_id
         self.is_exerted = False
         self.damage_counters = 0
@@ -385,10 +404,11 @@ class Player:
 class GameState:
     """The main container for the entire state of a single game."""
     def __init__(self, player1: Player, player2: Player):
-        self.players = {player1.player_id: player1, player2.player_id: player2}
-        self.current_player_id = player1.player_id
+        self.players: Dict[int, Player] = {player1.player_id: player1, player2.player_id: player2}
+        self.initial_player_id = player1.player_id
+        self.current_player_id = player1.player_id # Player 1 starts
         self.turn_number = 1
-        self.winner = None
+        self.winner: Optional[int] = None
 
     def get_player(self, player_id: int) -> Player:
         return self.players[player_id]
@@ -469,7 +489,7 @@ class GameState:
         pass
 
     def _draw_phase(self):
-        if self.turn_number == 1 and self.current_player_id == 1:
+        if self.turn_number == 1 and self.current_player_id == self.initial_player_id:
             return
         player = self.get_player(self.current_player_id)
         if player.deck.is_empty():
@@ -504,5 +524,34 @@ class GameState:
         # Clear temporary effects for the active player before the turn ends.
         self.get_player(self.current_player_id).clear_temporary_mods()
         self.current_player_id = self.get_opponent(self.current_player_id).player_id
-        if self.current_player_id == 1:
+        if self.current_player_id == self.initial_player_id:
             self.turn_number += 1
+
+    def run_game(self, max_turns=100) -> Optional[Player]:
+        """
+        Runs the entire game loop until a win condition is met or max turns are reached.
+        Returns the winning player object or None for a draw.
+        """
+        # Initial setup: both players draw their opening hand.
+        self.players[1].draw_initial_hand()
+        self.players[2].draw_initial_hand()
+        
+        while self.winner is None and self.turn_number <= max_turns:
+            self.run_turn()
+            self.end_turn()
+
+        # If a winner was determined by lore >= 20 or deck out
+        if self.winner is not None:
+            return self.get_player(self.winner)
+        
+        # If max turns are reached, determine winner by lore
+        player1_lore = self.players[1].lore
+        player2_lore = self.players[2].lore
+
+        if player1_lore > player2_lore:
+            return self.players[1]
+        elif player2_lore > player1_lore:
+            return self.players[2]
+        else:
+            # It's a draw
+            return None

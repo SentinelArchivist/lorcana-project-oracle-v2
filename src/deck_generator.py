@@ -9,6 +9,7 @@ class DeckGenerator:
         card_pool = pd.read_csv(card_dataset_path)
         # Filter for cards that are part of the main game
         card_pool = card_pool[card_pool['Set_Name'] != 'Lorcana TCG Quick Start Decks']
+        self.card_df = card_pool
 
         # Separate colorless cards first
         self.colorless_cards = list(card_pool[card_pool['Color'].isna()]['Name'].unique())
