@@ -145,7 +145,8 @@ class GeneticAlgorithm:
 
         # External callback
         if self.on_generation_callback:
-            self.on_generation_callback(ga_instance)
+            # Pass the entire instance of this class, not just the pygad instance
+            self.on_generation_callback(self)
 
     def _on_stop(self, ga_instance, last_fitness_values):
         """Callback function for on_stop."""
@@ -156,7 +157,8 @@ class GeneticAlgorithm:
         Configures and runs the genetic algorithm evolution process.
         """
         initial_population_lists = [list(deck) for deck in self.initial_population]
-        gene_space = self.deck_generator.id_to_card
+        # The gene_space should define the range of possible gene values (card IDs).
+        gene_space = range(len(self.deck_generator.unique_card_names))
 
         ga_instance = pygad.GA(
             num_generations=self.num_generations,

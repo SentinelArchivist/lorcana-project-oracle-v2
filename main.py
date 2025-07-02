@@ -84,7 +84,8 @@ def main():
                 best_deck_widget.insert(tk.END, f"{count}x {card_name}\n")
         best_deck_widget.config(state=tk.DISABLED)
 
-    def update_ui(ga_instance):
+    def update_ui(ga_object):
+        ga_instance = ga_object.ga_instance
         gen = ga_instance.generations_completed
         max_gen = ga_instance.num_generations
         best_solution, best_fitness, _ = ga_instance.best_solution()
@@ -93,11 +94,13 @@ def main():
         fitness_label.config(text=f"Best Fitness: {best_fitness:.4f}")
         progress_bar['value'] = (gen / max_gen) * 100
         
-        deck_names = [ga_instance.gene_space[gene] for gene in best_solution]
+        # Use the deck_generator from the passed ga_object to map IDs to names
+        deck_names = [ga_object.deck_generator.id_to_card[gene] for gene in best_solution]
         update_best_deck_display(deck_names)
 
-    def handle_generation_update(ga_instance):
-        root.after(0, lambda: update_ui(ga_instance))
+    def handle_generation_update(ga_object):
+        # The callback now receives the entire GeneticAlgorithm object
+        root.after(0, lambda: update_ui(ga_object))
 
     # --- Evolution Logic ---
     def run_evolution_task():
