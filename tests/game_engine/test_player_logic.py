@@ -293,6 +293,132 @@ class TestNewPlayerLogic(unittest.TestCase):
         # 3. Assert
         self.assertGreater(activate_ability_action.score, 20, "Activating a card-drawing item ability should have a very high score.")
 
+    def test_ai_scores_valuable_keyword_higher(self):
+        """Tests that the AI scores playing a character with a valuable keyword higher than one without."""
+        # SETUP
+        # Create two characters: one with Evasive, one without. Otherwise identical.
+        vanilla_char_data = create_mock_card_data("Vanilla Character", Cost=3, Strength=3, Willpower=3, Lore=1)
+        evasive_char_data = create_mock_card_data("Evasive Character", Cost=3, Strength=3, Willpower=3, Lore=1, Keywords=['Evasive'])
+
+        vanilla_card = Card(vanilla_char_data, self.player1.player_id)
+        evasive_card = Card(evasive_char_data, self.player1.player_id)
+
+        # Create play actions for both
+        vanilla_action = PlayCardAction(vanilla_card)
+        evasive_action = PlayCardAction(evasive_card)
+
+        # ACTION
+        evaluate_actions([vanilla_action, evasive_action], self.game, self.player1)
+
+        # ASSERT
+        # The character with Evasive should be considered more valuable.
+        self.assertGreater(evasive_action.score, vanilla_action.score, "Evasive keyword should increase the card's score.")
+
+    def test_ai_scores_resist_keyword_higher(self):
+        """Tests that the AI scores playing a character with Resist higher than one without."""
+        # SETUP
+        # Create two characters: one with Resist, one without. Otherwise identical.
+        resist_value = 2
+        vanilla_char_data = create_mock_card_data("Vanilla Character", Cost=4, Strength=2, Willpower=4, Lore=1)
+        resist_char_data = create_mock_card_data("Resist Character", Cost=4, Strength=2, Willpower=4, Lore=1, Keywords=[f'Resist +{resist_value}'])
+
+        vanilla_card = Card(vanilla_char_data, self.player1.player_id)
+        resist_card = Card(resist_char_data, self.player1.player_id)
+
+        # Create play actions for both
+        vanilla_action = PlayCardAction(vanilla_card)
+        resist_action = PlayCardAction(resist_card)
+
+        # ACTION
+        evaluate_actions([vanilla_action, resist_action], self.game, self.player1)
+
+        # ASSERT
+        # The character with Resist should be considered more valuable.
+        self.assertGreater(resist_action.score, vanilla_action.score, "Resist keyword should increase the card's score.")
+
+    def test_ai_scores_challenger_keyword_higher(self):
+        """Tests that the AI scores playing a character with Challenger higher than one without."""
+        # SETUP
+        # Create two characters: one with Challenger, one without. Otherwise identical.
+        challenger_value = 3
+        vanilla_char_data = create_mock_card_data("Vanilla Character", Cost=2, Strength=2, Willpower=2, Lore=1)
+        challenger_char_data = create_mock_card_data("Challenger Character", Cost=2, Strength=2, Willpower=2, Lore=1, Keywords=[f'Challenger +{challenger_value}'])
+
+        vanilla_card = Card(vanilla_char_data, self.player1.player_id)
+        challenger_card = Card(challenger_char_data, self.player1.player_id)
+
+        # Create play actions for both
+        vanilla_action = PlayCardAction(vanilla_card)
+        challenger_action = PlayCardAction(challenger_card)
+
+        # ACTION
+        evaluate_actions([vanilla_action, challenger_action], self.game, self.player1)
+
+        # ASSERT
+        # The character with Challenger should be considered more valuable.
+        self.assertGreater(challenger_action.score, vanilla_action.score, "Challenger keyword should increase the card's score.")
+
+    def test_ai_scores_support_keyword_higher(self):
+        """Tests that the AI scores playing a character with Support higher than one without."""
+        # SETUP
+        vanilla_char_data = create_mock_card_data("Vanilla Character", Cost=1, Strength=1, Willpower=1, Lore=1)
+        support_char_data = create_mock_card_data("Support Character", Cost=1, Strength=1, Willpower=1, Lore=1, Keywords=['Support'])
+
+        vanilla_card = Card(vanilla_char_data, self.player1.player_id)
+        support_card = Card(support_char_data, self.player1.player_id)
+
+        # Create play actions for both
+        vanilla_action = PlayCardAction(vanilla_card)
+        support_action = PlayCardAction(support_card)
+
+        # ACTION
+        evaluate_actions([vanilla_action, support_action], self.game, self.player1)
+
+        # ASSERT
+        # The character with Support should be considered more valuable for its potential.
+        self.assertGreater(support_action.score, vanilla_action.score, "Support keyword should increase the card's score.")
+
+    def test_ai_scores_singer_keyword_higher(self):
+        """Tests that the AI scores playing a character with Singer higher than one without."""
+        # SETUP
+        singer_value = 5
+        vanilla_char_data = create_mock_card_data("Vanilla Character", Cost=3, Strength=2, Willpower=4, Lore=1)
+        singer_char_data = create_mock_card_data("Singer Character", Cost=3, Strength=2, Willpower=4, Lore=1, Keywords=[f'Singer {singer_value}'])
+
+        vanilla_card = Card(vanilla_char_data, self.player1.player_id)
+        singer_card = Card(singer_char_data, self.player1.player_id)
+
+        # Create play actions for both
+        vanilla_action = PlayCardAction(vanilla_card)
+        singer_action = PlayCardAction(singer_card)
+
+        # ACTION
+        evaluate_actions([vanilla_action, singer_action], self.game, self.player1)
+
+        # ASSERT
+        # The character with Singer should be considered more valuable for its tempo advantage.
+        self.assertGreater(singer_action.score, vanilla_action.score, "Singer keyword should increase the card's score.")
+
+    def test_ai_scores_vanish_keyword_higher(self):
+        """Tests that the AI scores playing a character with Vanish higher than one without."""
+        # SETUP
+        vanilla_char_data = create_mock_card_data("Vanilla Character", Cost=4, Strength=3, Willpower=3, Lore=1)
+        vanish_char_data = create_mock_card_data("Vanish Character", Cost=4, Strength=3, Willpower=3, Lore=1, Keywords=['Vanish'])
+
+        vanilla_card = Card(vanilla_char_data, self.player1.player_id)
+        vanish_card = Card(vanish_char_data, self.player1.player_id)
+
+        # Create play actions for both
+        vanilla_action = PlayCardAction(vanilla_card)
+        vanish_action = PlayCardAction(vanish_card)
+
+        # ACTION
+        evaluate_actions([vanilla_action, vanish_action], self.game, self.player1)
+
+        # ASSERT
+        # The character with Vanish should be considered more valuable for its late-game lore potential.
+        self.assertGreater(vanish_action.score, vanilla_action.score, "Vanish keyword should increase the card's score.")
+
 
 if __name__ == '__main__':
     unittest.main()

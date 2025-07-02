@@ -150,12 +150,40 @@ def evaluate_actions(actions: List[Action], game: 'GameState', player: 'Player')
             score = 0
 
             if card.card_type == 'Location':
-                # Locations are high value for their passive lore generation.
-                # Estimate value over ~3 turns + survivability.
-                score = ((card.lore or 0) * 3) + (card.willpower or 0) - card.cost
+                # Locations are valued for passive lore and survivability.
+                score = ((card.lore or 0) * 5) + (card.willpower or 0) - card.cost
             else:
-                # For Characters and Items
+                # For Characters and Items, a simple stat-based score.
                 score = (card.strength or 0) + (card.willpower or 0) + (card.lore or 0) - card.cost
+
+            # Add score for valuable keywords
+            keyword_scores = {
+                'Evasive': 5,
+                'Ward': 5,
+            }
+            for keyword in card.keywords:
+                score += keyword_scores.get(keyword, 0)
+                if keyword.startswith('Resist'):
+                    resist_value = card.get_keyword_value('Resist')
+                    if resist_value:
+                        # Durability is valuable. Score is the resist amount.
+                        score += resist_value
+                elif keyword.startswith('Challenger'):
+                    challenger_value = card.get_keyword_value('Challenger')
+                    if challenger_value:
+                        # Being a better attacker is valuable.
+                        score += challenger_value
+                elif keyword == 'Support':
+                    # The value of support is the strength it can grant.
+                    score += card.strength or 0
+                elif keyword.startswith('Singer'):
+                    singer_value = card.get_keyword_value('Singer')
+                    if singer_value:
+                        # The value of a singer is the ink it can save.
+                        score += singer_value
+                elif keyword == 'Vanish':
+                    # The value of Vanish is the lore you can gain by banishing it.
+                    score += card.lore or 0
 
             # Add score for beneficial OnPlay abilities for any card type
             for ability in card.abilities:

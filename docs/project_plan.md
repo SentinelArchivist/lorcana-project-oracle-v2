@@ -84,7 +84,9 @@ This document outlines the step-by-step plan to complete Project Oracle, buildin
 - **Action:** Improve the AI's strategic thinking.
 - **Details:** It needs to understand board state, resource planning, and how to leverage its specific cards and their synergies.
 - **Sub-tasks:**
-  - **[ ] Implement AoE Heuristics:** Teach the AI to evaluate abilities that affect multiple targets (e.g., 'Deal 1 damage to all opposing characters') by scaling the action's score based on the number of targets affected.
+  - **[x] Implement Foundational Keyword Scoring:** AI scores cards with valuable keywords (Evasive, Ward, Resist, Challenger) higher.
+  - **[ ] Expand Keyword-Based Scoring:** Add nuanced scoring for `Support`, `Singer`, and `Vanish`.
+  - **[ ] Future: Implement synergy-based scoring (e.g., tribal bonuses).**
 
 ## Stage 3: The Deck Generator and Genetic Algorithm (The Breeder)
 
