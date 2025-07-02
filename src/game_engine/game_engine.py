@@ -289,11 +289,17 @@ class Player:
             self.hand.append(character)
 
     def banish_character(self, character: Card):
-        """Moves a character from the play area to the discard pile."""
+        """Moves a character from play. If it has Vanish, it returns to hand; otherwise, to discard."""
         if character in self.play_area:
             self.play_area.remove(character)
-            character.location = 'discard'
-            self.discard_pile.append(character)
+
+            if character.has_keyword('Vanish'):
+                character.location = 'hand'
+                character.damage_counters = 0  # Reset damage
+                self.hand.append(character)
+            else:
+                character.location = 'discard'
+                self.discard_pile.append(character)
 
     def activate_ability(self, character: Card, ability_index: int, game_turn: int) -> bool:
         """Activates a character's ability. Returns True on success."""

@@ -67,7 +67,7 @@ This document outlines the step-by-step plan to complete Project Oracle, buildin
 **[x] Task 2.10: Implement Item & Location Cards**
 - **Action:** Add the logic for playing and interacting with these card types to the game engine.
 
-**- [ ] Task 2.11: Implement all remaining keywords**
+**- [x] Task 2.11: Implement all remaining keywords**
   - [x] Implement `Evasive` keyword logic and tests
   - [x] Implement `Rush` keyword logic and tests
   - [x] Implement `Ward` keyword logic and tests
@@ -83,7 +83,7 @@ This document outlines the step-by-step plan to complete Project Oracle, buildin
   - [x] Implement `Resist` keyword logic and tests
   - [x] Implement `Singer` keyword logic and tests
   - [x] Implement `Support` keyword logic and tests
-  - [ ] Implement `Vanish` keyword logic and tests
+  - [x] Implement `Vanish` keyword logic and tests
 
 **Task 2.12: AI Integration of New Mechanics**
 - **Action:** Teach the AI in `player_logic.py` how to use Items, Locations, and the full suite of abilities.

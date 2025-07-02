@@ -138,5 +138,28 @@ class TestKeywords(unittest.TestCase):
 
 
 
+    def test_vanish_keyword(self):
+        """Test that a character with Vanish returns to hand when banished."""
+        # 1. Setup
+        # Player 1 has a character with Vanish in play
+        vanish_char_data = {'Name': 'Cheshire Cat, Not All There', 'Type': 'Character', 'Strength': 0, 'Willpower': 3, 'Keywords': ['Vanish']}
+        vanish_char = Card(vanish_char_data, owner_player_id=1)
+        self.player1.play_area.append(vanish_char)
+
+        # Deal lethal damage to the character
+        vanish_char.take_damage(3)
+
+        # 2. Action
+        # The banish logic is triggered within take_damage, but we'll call it explicitly
+        # to ensure the test is clear. In the real engine, this check happens after damage.
+        if vanish_char.willpower is not None and vanish_char.damage_counters >= vanish_char.willpower:
+            self.player1.banish_character(vanish_char)
+
+        # 3. Assert
+        self.assertIn(vanish_char, self.player1.hand, "Character with Vanish should return to hand.")
+        self.assertNotIn(vanish_char, self.player1.discard_pile, "Character with Vanish should not be in the discard pile.")
+        self.assertNotIn(vanish_char, self.player1.play_area, "Character with Vanish should be removed from play.")
+
+
 if __name__ == '__main__':
     unittest.main()
