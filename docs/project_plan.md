@@ -80,12 +80,12 @@ This document outlines the step-by-step plan to complete Project Oracle, buildin
   - **[x] AI Evaluation for Location Cards:** Implemented heuristics in `evaluate_actions` for the AI to score `PlayCardAction` for Locations, valuing their passive lore generation and willpower.
   - **[x] AI Usage of Activated Abilities:** Confirmed the AI's `get_possible_actions` can generate `ActivateAbilityAction` for non-character cards (like Items) and that `evaluate_actions` scores them appropriately.
 
-**Task 2.13: Advanced Heuristics**
+**[x] Task 2.13: Upgrade AI heuristics for advanced strategy and synergy**
 - **Action:** Improve the AI's strategic thinking.
 - **Details:** It needs to understand board state, resource planning, and how to leverage its specific cards and their synergies.
 - **Sub-tasks:**
   - **[x] Implement Foundational Keyword Scoring:** AI scores cards with valuable keywords (Evasive, Ward, Resist, Challenger) higher.
-  - **[ ] Expand Keyword-Based Scoring:** Add nuanced scoring for `Support`, `Singer`, and `Vanish`.
+  - **[x] Expand Keyword-Based Scoring:** Add nuanced scoring for `Support`, `Singer`, and `Vanish`.
   - **[ ] Future: Implement synergy-based scoring (e.g., tribal bonuses).**
 
 ## Stage 3: The Deck Generator and Genetic Algorithm (The Breeder)
@@ -94,15 +94,15 @@ This document outlines the step-by-step plan to complete Project Oracle, buildin
 
 **Task 3.1: Implement the Deck Generator**
 - **Action:** Create a new file (`deck_generator.py`).
-- **Details:** Write a function that creates an initial population of random, but legal (60 cards, 2 inks, max 4 copies) decks using the `lorcana_card_master_dataset.csv`.
+- **Details:** Write a function that creates an initial population of quasi-random, but legal and "resembling the meta competitive decks in terms of makeup" (60 cards, 2 inks, max 4 copies per card, most cards have 4 copies, etc.) decks using the `lorcana_card_master_dataset.csv`. The program should generate enough decks to fulfill the application's goals, but few enough that the program will ultimately be able to complete a full run in a few minutes tops.
 
 **Task 3.2: Build the Fitness Function**
 - **Action:** Create a new file (`evolution.py`).
-- **Details:** Write the core fitness function. This function will take a single decklist, simulate a small number of games against each of the pillar decks from `lorcana_metagame_decks.csv` using the `game_engine`, and return the overall win rate.
+- **Details:** Write the core fitness function. This function will take a single decklist, simulate a small number of games (perhaps 20 games) against each of the pillar decks from `lorcana_metagame_decks.csv` using the `game_engine`, and return the overall win rate.
 
 **Task 3.3: Implement the Genetic Algorithm**
 - **Action:** Use the `PyGAD` library within `evolution.py`.
-- **Details:** Configure the genetic algorithm with the fitness function. Implement the custom crossover logic that respects the two-ink-color rule and the mutation logic.
+- **Details:** Configure the genetic algorithm with the fitness function. Implement the custom crossover logic that respects the two-ink-color rule and the mutation logic. Importantly, all new decks should continue to conform to "legal and 'resembling the meta competitive decks in terms of makeup' (60 cards, 2 inks, max 4 copies per card, most cards have 4 copies, etc.)".
 
 ## Stage 4: User Interface and Final Integration
 
@@ -110,7 +110,7 @@ This document outlines the step-by-step plan to complete Project Oracle, buildin
 
 **Task 4.1: Design the Simple UI**
 - **Action:** Create a main application file (`main.py`).
-- **Details:** Use `PySimpleGUI` to build the simple user interface described in the devspec. This includes a start/stop button, a log area, and a display for the best decklist.
+- **Details:** Use `PySimpleGUI` to build the simple user interface described in the devspec. This includes a start/stop button, a log area, a progress bar, and a display for the best decklist.
 
 **Task 4.2: Integrate All Components**
 - **Action:** In `main.py`, wire the UI to the backend logic.
@@ -118,4 +118,4 @@ This document outlines the step-by-step plan to complete Project Oracle, buildin
 
 **Task 4.3: Final Output Display**
 - **Action:** Add logic to `main.py` to format and display the final results.
-- **Details:** When the evolution process is complete, the UI will display the champion decklist, its overall win rate, and its performance against each of the pillar meta decks.
+- **Details:** When the evolution process is complete, the UI will display the champion decklist, its overall win rate, and its performance against each of the pillar meta decks. Make sure it includes a full decklist along with the win rate against each pillar meta deck.
