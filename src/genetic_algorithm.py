@@ -47,44 +47,47 @@ class GeneticAlgorithm:
 
         Args:
             parents (list): A list of parent solutions (decks of card IDs).
-            offspring_size (tuple): The size of the offspring to be produced.
+            offspring_size (tuple): The size of the offspring to be produced (num_offspring, num_genes).
             ga_instance: The pygad.GA instance (unused, but required by the API).
 
         Returns:
-            list: A list containing the new offspring (deck of card IDs).
+            numpy.ndarray: An array of the new offspring, shape (num_offspring, 60).
         """
-        parent1 = parents[0]
-        parent2 = parents[1]
+        offspring = []
+        for _ in range(offspring_size[0]):
+            parent1, parent2 = parents[random.randint(0, len(parents) - 1)], parents[random.randint(0, len(parents) - 1)]
 
-        child_inks = tuple(sorted(self.deck_generator.get_deck_inks(parent1)))
-        valid_card_names = self.deck_generator.ink_pair_card_lists.get(child_inks, [])
-        if not valid_card_names:
-            return parent1.copy()
-        
-        valid_card_pool_ids = {self.deck_generator.card_to_id[name] for name in valid_card_names}
+            child_inks = tuple(sorted(self.deck_generator.get_deck_inks(parent1)))
+            valid_card_names = self.deck_generator.ink_pair_card_lists.get(child_inks, [])
+            if not valid_card_names:
+                offspring.append(parent1.copy())
+                continue
 
-        parent_pool = [gene for gene in (parent1.tolist() + parent2.tolist()) if gene in valid_card_pool_ids]
-        random.shuffle(parent_pool)
+            valid_card_pool_ids = {self.deck_generator.card_to_id[name] for name in valid_card_names}
+            parent_pool = [gene for gene in (parent1.tolist() + parent2.tolist()) if gene in valid_card_pool_ids]
+            random.shuffle(parent_pool)
 
-        child_deck = []
-        card_counts = {}
-        for gene in parent_pool:
-            if len(child_deck) >= 60:
-                break
-            if card_counts.get(gene, 0) < 4:
-                child_deck.append(gene)
-                card_counts[gene] = card_counts.get(gene, 0) + 1
-        
-        valid_card_pool_list = list(valid_card_pool_ids)
-        while len(child_deck) < 60:
-            if not valid_card_pool_list:
-                break
-            new_card = random.choice(valid_card_pool_list)
-            if card_counts.get(new_card, 0) < 4:
-                child_deck.append(new_card)
-                card_counts[new_card] = card_counts.get(new_card, 0) + 1
+            child_deck = []
+            card_counts = {}
+            for gene in parent_pool:
+                if len(child_deck) >= 60:
+                    break
+                if card_counts.get(gene, 0) < 4:
+                    child_deck.append(gene)
+                    card_counts[gene] = card_counts.get(gene, 0) + 1
+            
+            valid_card_pool_list = list(valid_card_pool_ids)
+            while len(child_deck) < 60:
+                if not valid_card_pool_list:
+                    break
+                new_card = random.choice(valid_card_pool_list)
+                if card_counts.get(new_card, 0) < 4:
+                    child_deck.append(new_card)
+                    card_counts[new_card] = card_counts.get(new_card, 0) + 1
+            
+            offspring.append(np.array(child_deck))
 
-        return np.array(child_deck)
+        return np.array(offspring)
 
     def _mutation_func(self, offspring, ga_instance):
         """
