@@ -2,10 +2,11 @@ import unittest
 import sys
 import os
 
-# Add the src directory to the Python path to allow for module imports
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../src')))
+# Add the project root to the Python path
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+sys.path.insert(0, project_root)
 
-from abilities.create_abilities_database import parse_ability_text
+from src.abilities.create_abilities_database import parse_ability_text, ParsedAbility
 
 class TestAbilityParser(unittest.TestCase):
     """
@@ -19,7 +20,7 @@ class TestAbilityParser(unittest.TestCase):
         abilities = parse_ability_text(text)
         self.assertEqual(len(abilities), 1)
         ability = abilities[0]
-        self.assertEqual(ability.trigger, "Passive")
+        self.assertEqual(ability.trigger['type'], "Passive")
         self.assertEqual(ability.effect, "GainKeyword")
         self.assertEqual(ability.target, "Self")
         self.assertEqual(ability.value, {"keyword": "Rush", "amount": True})

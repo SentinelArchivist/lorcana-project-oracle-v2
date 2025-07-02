@@ -32,14 +32,17 @@ class InkAction(Action):
         return f"InkAction(card={self.card.name}, score={self.score})"
 
 class PlayCardAction(Action):
-    def __init__(self, card: 'Card'):
+    def __init__(self, card: 'Card', shift_target: Optional['Card'] = None):
         super().__init__()
         self.card = card
+        self.shift_target = shift_target
 
     def execute(self, game: 'GameState', player: 'Player'):
-        player.play_card(self.card, game.turn_number)
+        player.play_card(self.card, game, shift_target=self.shift_target)
 
     def __repr__(self):
+        if self.shift_target:
+            return f"PlayCardAction(card={self.card.name}, shift_on={self.shift_target.name}, score={self.score})"
         return f"PlayCardAction(card={self.card.name}, score={self.score})"
 
 class QuestAction(Action):
@@ -164,8 +167,9 @@ def evaluate_actions(actions: List[Action], game: 'GameState', player: 'Player')
                 action.score = 10 # Default for other abilities for now
 
 def get_possible_actions(game: 'GameState', player: 'Player', has_inked: bool) -> List[Action]:
-    """Enumerates all legal actions the player can take."""
+    """Enumerates all legal actions the player can take, respecting keywords like Reckless."""
     actions: List[Action] = []
+    opponent = game.get_opponent(player.player_id)
 
     # 1. Ink action (if not already done)
     if not has_inked:
@@ -175,48 +179,63 @@ def get_possible_actions(game: 'GameState', player: 'Player', has_inked: bool) -
             inkable_cards.sort(key=lambda c: c.cost, reverse=True)
             actions.append(InkAction(inkable_cards[0]))
 
-    # 2. Play card actions
+    # 2. Play card actions (Normal and Shift)
     available_ink = player.get_available_ink()
     for card in player.hand:
-        if card.cost <= available_ink:
+        # Normal play
+        if player.can_play_card(card):
             actions.append(PlayCardAction(card))
 
-    # 3. Quest actions
+        # Shift play
+        if card.has_keyword('Shift'):
+            shift_cost = card.get_keyword_value('Shift')
+            if shift_cost is not None and player.get_available_ink() >= shift_cost:
+                shift_targets = player.get_possible_shift_targets(card)
+                for target in shift_targets:
+                    actions.append(PlayCardAction(card, shift_target=target))
+
+    # 3. Character actions (Quest, Challenge, Abilities, Sing)
+    # This section is refactored to be character-centric to handle Reckless correctly.
     ready_characters = [c for c in player.play_area if player._can_character_act(c, game.turn_number)]
+
     for char in ready_characters:
+        # A character that is Reckless MUST challenge if able.
+        if char.has_keyword('Reckless'):
+            valid_targets = player.get_valid_challenge_targets(char, opponent)
+            if valid_targets:
+                # This character can only challenge. Add challenge actions and nothing else for this character.
+                for defender in valid_targets:
+                    actions.append(ChallengeAction(char, defender))
+                continue  # Move to the next character
+
+        # If the character is not Reckless (or is Reckless but cannot challenge), generate its other actions.
+
+        # Quest Action
         support_target = None
         if char.has_keyword('Support'):
             potential_targets = [t for t in player.play_area if t.unique_id != char.unique_id]
             if potential_targets:
+                # A real AI would pick the best target, for now we just pick the strongest
                 support_target = max(potential_targets, key=lambda c: c.strength or 0)
         actions.append(QuestAction(char, support_target))
 
-    # 4. Challenge actions
-    opponent = game.get_opponent(player.player_id)
-    opponent_exerted_characters = [c for c in opponent.play_area if c.is_exerted]
-    
-    if opponent_exerted_characters:
-        bodyguard_targets = [c for c in opponent_exerted_characters if c.has_keyword('Bodyguard')]
-        target_pool = bodyguard_targets if bodyguard_targets else opponent_exerted_characters
-        
-        for attacker in ready_characters:
-            for defender in target_pool:
-                actions.append(ChallengeAction(attacker, defender))
-                
-    # 5. Use activated abilities
-    for character in ready_characters:
-        for i, ability in enumerate(character.abilities):
-            if ability.trigger == "Activated":
-                actions.append(ActivateAbilityAction(character, i))
+        # Challenge Actions (for non-reckless characters)
+        valid_targets = player.get_valid_challenge_targets(char, opponent)
+        for defender in valid_targets:
+            actions.append(ChallengeAction(char, defender))
 
-    # 6. Sing actions
-    singable_songs = [c for c in player.hand if c.card_type == 'Song']
-    possible_singers = [char for char in ready_characters if char.has_keyword('Singer')]
-    for song in singable_songs:
-        for singer in possible_singers:
-            # Check if the singer can sing this song for free
-            if singer.get_keyword_value('Singer') >= song.cost:
-                actions.append(SingAction(song, singer))
+        # Activated Ability Actions
+        for i, ability in enumerate(char.abilities):
+            if ability.trigger == "Activated":
+                actions.append(ActivateAbilityAction(char, i))
+
+        # Sing Actions
+        if char.has_keyword('Singer'):
+            singable_songs = [c for c in player.hand if c.card_type == 'Song']
+            for song in singable_songs:
+                # Check if the singer can sing this song for free
+                if char.get_keyword_value('Singer') >= song.cost:
+                    actions.append(SingAction(song, char))
 
     return actions
 

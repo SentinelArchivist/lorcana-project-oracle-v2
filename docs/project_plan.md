@@ -14,11 +14,11 @@ This document outlines the step-by-step plan to complete Project Oracle, buildin
 
 *The most critical prerequisite for the simulation engine is translating raw card text into a structured, machine-readable format. This is the bridge from data to logic.*
 
-**Task 1.1: Design the Abilities Data Structure**
+**[x]Task 1.1: Design the Abilities Data Structure**
 - **Action:** Create a new Python script (`create_abilities_database.py`).
 - **Details:** This script will read `lorcana_card_master_dataset.csv`. It will define the final structure for our abilities data (e.g., a list of dictionaries or a dedicated class). The primary goal is to parse the `Abilities_JSON` column and the `Body_Text` for every card and prepare for manual translation.
 
-**Task 1.2: Implement the Manual Translation & Parsing**
+**[x] Task 1.2: Implement the Manual Translation & Parsing**
 - **Action:** Add logic to `create_abilities_database.py` to systematically iterate through each card with abilities.
 - **Details:** The script will implement a parser based on the grammar defined in `programmers-guide-simulating-lorcana.md`. It will translate the text into a structured format with fields like `Trigger`, `Effect`, `Target`, and `Value`.
 - **Output:** A new file, `lorcana_abilities_master.json`, containing a structured representation of every card's abilities.
@@ -27,33 +27,71 @@ This document outlines the step-by-step plan to complete Project Oracle, buildin
 
 *With structured ability data, we can now build the core simulator.* 
 
-**Task 2.1: Create Core Game State Classes**
+**[x] Task 2.1: Create Core Game State Classes**
 - **Action:** Create a new Python file (`game_engine.py`).
 - **Details:** Define the core Python classes: `Card`, `Deck`, `Player`, and `GameState`. These classes will hold all the necessary attributes defined in the project spec (e.g., lore, hand, inkwell, characters in play).
 
-**Task 2.2: Implement the Turn Structure and Game Loop**
+**[x] Task 2.2: Implement the Turn Structure and Game Loop**
 - **Action:** Add functions to `game_engine.py` to manage the game flow.
 - **Details:** Code the main game loop, including the turn phases: Ready, Set, Draw, and Main. Implement the logic for checking win/loss conditions (20 lore or empty deck).
 
-**Task 2.3: Implement Core Card Actions**
+**[x] Task 2.3: Implement Core Card Actions**
 - **Action:** Add methods to the `Player` and `GameState` classes for all fundamental actions.
 - **Details:** Implement `play_card()`, `ink_card()`, `quest()`, `challenge()`, and `activate_ability()`. The `activate_ability()` method will be the most complex, as it will read from our `lorcana_abilities_master.json` to execute the correct effects.
 
-**Task 2.4: Develop the Heuristic-Based Player 'Brain'**
+**[x] Task 2.4: Develop the Heuristic-Based Player 'Brain'**
 - **Action:** Create a new file (`player_logic.py`) and import it into `game_engine.py`.
 - **Details:** Implement the heuristic AI for decision-making as outlined in the devspec. This includes functions for choosing what to ink, evaluating board state, and selecting the optimal action (quest vs. challenge vs. playing a card).
 
-**Task 2.5: Implement Action & Song Card Logic**
+**[x] Task 2.5: Implement Action & Song Card Logic**
 - **Action:** Enhance the `play_card` method in `game_engine.py`.
-- **Details:** Add logic to differentiate between card types (Character, Action, Item). Actions should be moved to the discard pile immediately after their effect is resolved. Implement the 'Singer' keyword, allowing characters to be exerted to play a Song card for free instead of paying its ink cost.
+- **Details:** Add logic to differentiate between card types (Character, Action, Item). Actions should be moved to the discard pile immediately after their effect is resolved. Implement and test 'Banish' effect, 'GainStrength' (stat modifier) effect, and 'ReturnToHand' effect. Implement the 'Singer' keyword, allowing characters to be exerted to play a Song card for free instead of paying its ink cost.
 
-**Task 2.6: Implement Core Keyword Abilities**
+**[x] Task 2.6: Implement Core Keyword Abilities**
 - **Action:** Update the `challenge` method in `game_engine.py` and related AI logic.
-- **Details:** Integrate the passive combat-related keywords from `lorcana_abilities_master.json`. This includes `Bodyguard` (must be challenged first), `Support` (adds strength to another character when questing), `Challenger +X` (gains strength when challenging), and `Resist +X` (reduces damage taken).
+- **Details:** Integrate the passive combat-related keywords from `lorcana_abilities_master.json`. This includes `Bodyguard` (must be challenged first), `Support` (adds strength to another character when questing), `Challenger +X` (gains strength when challenging), and `Resist +X` (reduces damage taken). Setup for implementing `GainKeyword` effect.
 
-**Task 2.7: Enhance AI Heuristics & Action Loop**
+**[x] Task 2.7: Enhance AI Heuristics & Action Loop**
 - **Action:** Refactor the `run_main_phase` function in `player_logic.py`.
 - **Details:** Replace the rigid, one-action-per-turn logic with a flexible loop that continues as long as the AI has available ink and actions. The AI should be able to play a card, challenge, quest, and sing a song all in the same turn. Improve heuristics to make smarter decisions, such as evaluating trades (e.g., is it worth it to banish my character to banish a higher-value target?) and recognizing when to use `Bodyguard` characters defensively.
+
+
+**[x] Task 2.8: Full-Spectrum Ability Parser**
+- **Action:** Overhaul `create_abilities_database.py`.
+- **Details:** We must be able to parse the vast majority of card text into structured `(Trigger, Effect, Target, Value)` tuples. This is the highest priority task.
+
+**[x] Task 2.9: Generic Effect Resolver**
+- **Action:** Create a system in `game_engine.py` that can take a parsed ability from any card and execute it.
+- **Details:** This means implementing effects like `DealDamage`, `Heal`, `SearchDeck`, `ModifyStrength`, etc.
+
+**[x] Task 2.10: Implement Item & Location Cards**
+- **Action:** Add the logic for playing and interacting with these card types to the game engine.
+
+**- [ ] Task 2.11: Implement all remaining keywords**
+  - [x] Implement `Evasive` keyword logic and tests
+  - [x] Implement `Rush` keyword logic and tests
+  - [x] Implement `Ward` keyword logic and tests
+  - [x] Implement `Reckless` keyword logic and tests
+  - [x] Implement `Shift` keyword logic and tests
+    - [x] Create failing test for Shift mechanic
+    - [x] Implement `can_play_with_shift` and `get_base_name` methods
+    - [x] Update `Player.play_card` to handle Shift plays
+    - [x] Update AI (`get_possible_actions`) to generate Shift actions
+    - [x] Verify all tests pass and fix regressions
+  - [x] Implement `Bodyguard` keyword logic and tests
+  - [x] Implement `Challenger` keyword logic and tests
+  - [x] Implement `Resist` keyword logic and tests
+  - [x] Implement `Singer` keyword logic and tests
+  - [x] Implement `Support` keyword logic and tests
+  - [ ] Implement `Vanish` keyword logic and tests
+
+**Task 2.12: AI Integration of New Mechanics**
+- **Action:** Teach the AI in `player_logic.py` how to use Items, Locations, and the full suite of abilities.
+- **Details:** The action-enumeration and heuristic-evaluation functions will need significant expansion.
+
+**Task 2.13: Advanced Heuristics**
+- **Action:** Improve the AI's strategic thinking.
+- **Details:** It needs to understand board state, resource planning, and how to leverage its specific cards and their synergies.
 
 ## Stage 3: The Deck Generator and Genetic Algorithm (The Breeder)
 

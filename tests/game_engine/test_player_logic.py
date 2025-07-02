@@ -1,8 +1,14 @@
 import unittest
-from unittest.mock import patch
+import sys
+import os
+from unittest.mock import MagicMock, patch
+
+# Add the project root to the Python path
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+sys.path.insert(0, project_root)
 
 from src.game_engine.game_engine import GameState, Player, Card, Deck
-from src.game_engine.player_logic import run_main_phase, get_possible_actions, evaluate_actions, ChallengeAction
+from src.game_engine.player_logic import run_main_phase, get_possible_actions, evaluate_actions, ChallengeAction, PlayCardAction
 from src.abilities.create_abilities_database import ParsedAbility
 
 def create_mock_card_data(name: str, **kwargs) -> dict:
@@ -146,6 +152,74 @@ class TestNewPlayerLogic(unittest.TestCase):
             
             # Assert that the AI did not quest, since drawing a card is a higher priority
             mock_quest.assert_not_called()
+
+    def test_ai_is_forced_to_challenge_with_reckless_character(self):
+        """AI must challenge with a Reckless character if there is a valid target."""
+        # Setup: A reckless character that could quest for a lot of lore
+        reckless_char_data = create_mock_card_data("Reckless Attacker", Strength=1, Willpower=3, Lore=5, Keywords=['Reckless'])
+        reckless_char = Card(reckless_char_data, self.player1.player_id)
+        reckless_char.turn_played = 1
+        self.player1.play_area.append(reckless_char)
+
+        # A valid, but not particularly valuable, target
+        defender_data = create_mock_card_data("Defender", Strength=1, Willpower=1, Lore=1)
+        defender = Card(defender_data, self.player2.player_id)
+        defender.is_exerted = True
+        self.player2.play_area.append(defender)
+
+        with patch.object(GameState, 'challenge') as mock_challenge, \
+             patch.object(Player, 'quest') as mock_quest:
+
+            # Simulate the challenge outcome
+            def challenge_side_effect(attacker, defender):
+                attacker.is_exerted = True
+                return True, True # Both survive
+            mock_challenge.side_effect = challenge_side_effect
+
+            run_main_phase(self.game, self.player1)
+
+            # Assert that the AI was forced to challenge
+            mock_challenge.assert_called_once_with(reckless_char, defender)
+            mock_quest.assert_not_called()
+
+    def test_ai_considers_shift_action(self):
+        """AI should generate a PlayCardAction with a shift_target if possible."""
+        # 1. Setup
+        # Player 1 has a character in play that can be shifted onto
+        base_char_data = create_mock_card_data('Mickey Mouse, Friendly Face', Cost=1)
+        base_char = Card(base_char_data, self.player1.player_id)
+        self.player1.play_area.append(base_char)
+
+        # Player 1 has a shift character in hand
+        shift_char_data = create_mock_card_data('Mickey Mouse, Brave Little Tailor', Cost=7, Keywords=['Shift 5'])
+        shift_char = Card(shift_char_data, self.player1.player_id)
+        self.player1.hand.append(shift_char)
+
+        # Player has enough ink for shift, but not full cost
+        self.player1.inkwell = [Card(create_mock_card_data(f"Ink {i}", Inkable=True), self.player1.player_id) for i in range(6)]
+
+        # 2. Action
+        actions = get_possible_actions(self.game, self.player1, has_inked=True)
+
+        # 3. Assert
+        play_actions = [a for a in actions if isinstance(a, PlayCardAction)]
+
+        # Debugging assertions to trace the logic
+        self.assertTrue(shift_char.has_keyword('Shift'), "Card should have Shift keyword")
+        shift_cost = shift_char.get_keyword_value('Shift')
+        self.assertEqual(shift_cost, 5, "Shift cost should be 5")
+        self.assertGreaterEqual(self.player1.get_available_ink(), shift_cost, "Player should have enough ink for shift")
+        shift_targets = self.player1.get_possible_shift_targets(shift_char)
+        self.assertEqual(len(shift_targets), 1, "Should find one valid shift target")
+        self.assertIn(base_char, shift_targets, "The character in play should be a valid shift target")
+
+        # Final assertion: The only valid play is the shift action
+        self.assertEqual(len(play_actions), 1, "Should only find one possible play action")
+        shift_action = play_actions[0]
+
+        self.assertEqual(shift_action.card, shift_char, "The action should be for the shift character")
+        self.assertEqual(shift_action.shift_target, base_char, "The action should target the base character for shifting")
+
 
 if __name__ == '__main__':
     unittest.main()

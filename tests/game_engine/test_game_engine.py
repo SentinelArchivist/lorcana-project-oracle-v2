@@ -1,11 +1,14 @@
 import unittest
 import sys
 import os
+from unittest.mock import MagicMock, patch, call
 
-# Add the src directory to the Python path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../src')))
+# Add the project root to the Python path
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+sys.path.insert(0, project_root)
 
-from game_engine.game_engine import Card, Deck, Player, GameState, ParsedAbility
+from src.game_engine.game_engine import GameState, Player, Card, Deck
+from src.abilities.create_abilities_database import ParsedAbility
 
 # --- Test Fixtures ---
 
@@ -148,15 +151,16 @@ class TestPlayerActions(unittest.TestCase):
         self.player1.hand.append(card_to_play)
 
         self.assertEqual(self.player1.get_available_ink(), 3)
-        self.assertTrue(self.player1.play_card(card_to_play, self.game.turn_number))
-        self.assertEqual(len(self.player1.play_area), 1)
-        self.assertEqual(self.player1.play_area[0].turn_played, self.game.turn_number)
+        self.player1.play_card(card_to_play, self.game)
+        self.assertIn(card_to_play, self.player1.play_area)
+        self.assertNotIn(card_to_play, self.player1.hand)
         self.assertEqual(self.player1.get_available_ink(), 0)
 
     def test_play_card_insufficient_ink(self):
         card_to_play = Card(create_mock_card_data("Expensive Card", "EC-1", Cost=5), 1)
         self.player1.hand.append(card_to_play)
-        self.assertFalse(self.player1.play_card(card_to_play, self.game.turn_number))
+        with self.assertRaises(ValueError):
+            self.player1.play_card(card_to_play, self.game)
         self.assertEqual(len(self.player1.play_area), 0)
 
     def test_quest(self):
@@ -224,7 +228,7 @@ class TestPlayerActions(unittest.TestCase):
         self.player1.ink_card(ink)
         self.game._ready_phase()
 
-        self.assertTrue(self.player1.play_card(action_card, self.game.turn_number))
+        self.player1.play_card(action_card, self.game)
         self.assertIn(action_card, self.player1.discard_pile)
         self.assertNotIn(action_card, self.player1.hand)
         self.assertNotIn(action_card, self.player1.play_area)
