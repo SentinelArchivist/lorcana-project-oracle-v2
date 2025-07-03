@@ -37,6 +37,8 @@ class DeckGenerator:
             eligible_cards.extend(self.colorless_cards)
             self.ink_pair_card_lists[ink_pair] = eligible_cards
 
+        self._memo_get_deck_inks = {}
+
     def generate_deck(self) -> list[int]:
         """Generates a single, legal, 60-card deck represented by card IDs."""
         if not self.ink_pair_card_lists:
@@ -58,6 +60,11 @@ class DeckGenerator:
 
     def get_deck_inks(self, deck: list[int]) -> set[str]:
         """Determines the set of inks present in a given deck of card IDs."""
+        # Convert numpy.ndarray to a hashable tuple for dictionary key usage
+        deck_tuple = tuple(deck)
+        if deck_tuple in self._memo_get_deck_inks:
+            return self._memo_get_deck_inks[deck_tuple]
+
         deck_names = [self.id_to_card[card_id] for card_id in deck]
         inks = set()
         name_to_color = self.card_df.set_index('Name')['Color']
@@ -71,6 +78,7 @@ class DeckGenerator:
                 for color in str(card_colors).split(', '):
                     if color in self.ink_colors:
                         inks.add(color)
+        self._memo_get_deck_inks[deck_tuple] = inks
         return inks
 
     def generate_initial_population(self, num_decks: int) -> list[list[int]]:
