@@ -1,6 +1,9 @@
 import requests
 import pandas as pd
 import json
+from src.data_processing.ability_parser import parse_abilities
+from src.data_processing.ability_transformer import transform_abilities
+import os
 
 def fetch_lorcana_data(output_path: str = 'data/processed/lorcana_card_master_dataset.csv') -> pd.DataFrame:
     """
@@ -47,15 +50,28 @@ def fetch_lorcana_data(output_path: str = 'data/processed/lorcana_card_master_da
         df['Classification'] = df['Classifications'].apply(lambda x: x[0] if isinstance(x, list) and x else None)
         df = df.drop(columns=['Classifications'])
 
-    # Per instructions, store the raw JSON/string of the 'Abilities' field
+    # --- Ability Parsing & Transformation ---
+    # If 'Abilities' column exists, parse it, then transform it into the canonical schema.
     if 'Abilities' in df.columns:
-        df['Abilities_JSON'] = df['Abilities'].apply(json.dumps)
-    else:
-        df['Abilities_JSON'] = None
-    
-    # Drop the original abilities column if it exists
-    if 'Abilities' in df.columns:
+        # Fill NaN with empty strings to prevent errors in the parser.
+        df['Abilities'] = df['Abilities'].fillna('')
+
+        # Step 1: Parse raw ability strings into structured Python objects.
+        parsed_abilities = df['Abilities'].apply(parse_abilities)
+
+        # Step 2: Transform the parsed abilities into the canonical schema.
+        schema_abilities = parsed_abilities.apply(transform_abilities)
+
+        # Step 3: Store the results as JSON strings in new columns.
+        df['parsed_abilities'] = parsed_abilities.apply(json.dumps)
+        df['schema_abilities'] = schema_abilities.apply(json.dumps)
+
+        # Drop the original raw 'Abilities' column as it is now redundant.
         df = df.drop(columns=['Abilities'])
+
+    # Ensure the output directory exists before saving the file.
+    output_dir = os.path.dirname(output_path)
+    os.makedirs(output_dir, exist_ok=True)
 
     try:
         df.to_csv(output_path, index=False, encoding='utf-8')

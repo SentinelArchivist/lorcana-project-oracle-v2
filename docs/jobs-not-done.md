@@ -17,10 +17,14 @@ This document outlines the systematic plan to bring Project Oracle to a state of
     - [x] Integration Test for Data Pipeline: Create a test to run `collect_card_data.py` and `parse_validate_decks.py` in sequence, ensuring the processed data is valid.
     - [x] **Critical:** Integration Test for `unhashable type` bug: Write a dedicated test that simulates the conditions of the historical `numpy.ndarray` hashing error to prove the tuple-based fix in `DeckGenerator.get_deck_inks` is permanently effective.
 
-- [ ] **Task 1.2: Validate and Harden the Ability Parser**
-    - [ ] Create a validation suite for `create_abilities_database.py`.
-    - [ ] Manually verify the parsed output for a representative sample of cards with complex and unique abilities.
-    - [ ] Implement logging for unparsed or partially parsed ability text to identify and remedy gaps in the `ABILITY_GRAMMAR`.
+- [x] **Task 1.2: Design and Implement the Ability Parser & Transformer**
+    - [x] **Discovery:** The data pipeline currently only stores raw ability JSON, it does not parse it. A parser must be built.
+    - [x] **Phase 1 (Research):** Analyze the raw ability data structure from the API to inform parser design.
+    - [x] **Phase 2 (Parser TDD):** Implement the new parser module, writing tests for all known ability types and edge cases.
+    - [x] **Phase 3 (Parser Integration):** Integrate the new parser into the data pipeline.
+    - [x] **Phase 4 (Schema Design):** Define a normalized schema for parsed abilities that the `EffectResolver` can use.
+    - [x] **Phase 5 (Transformer TDD):** Implement the `AbilityTransformer` module to convert parsed data to the canonical schema.
+    - [x] **Phase 6 (Transformer Integration):** Integrate the new transformer into the data pipeline.
 
 - [ ] **Task 1.3: Git Checkpoint: Foundational Stability**
     - [ ] Once all tests in Phase 1 are passing, commit the changes to establish a verified, stable baseline.
