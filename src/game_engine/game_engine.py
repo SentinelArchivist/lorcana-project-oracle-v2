@@ -144,6 +144,7 @@ class Player:
         self.locations: List[Card] = []
         self.discard_pile: List[Card] = []
         self.lore = 0
+        self.has_inked_this_turn = False
         self.temporary_strength_mods: Dict[str, int] = {}
 
     def draw_cards(self, num_cards: int):
@@ -158,8 +159,16 @@ class Player:
         self.draw_cards(num_cards)
 
     def get_available_ink(self) -> int:
-        """Returns the number of unexerted cards in the inkwell."""
+        """Returns the number of un-exerted cards in the inkwell."""
         return sum(1 for card in self.inkwell if not card.is_exerted)
+
+    def ready_cards(self):
+        """Readies all cards in the inkwell and play area."""
+        for card in self.inkwell:
+            card.is_exerted = False
+        for card in self.play_area:
+            card.is_exerted = False
+
 
     def _can_character_act(self, character: Card, game_turn: int) -> bool:
         """Checks if a character can perform an action (ink is 'dry')."""
@@ -178,13 +187,20 @@ class Player:
 
     def ink_card(self, card: Card) -> bool:
         """Moves a card from hand to inkwell. Returns True on success."""
-        if card in self.hand and card.inkable:
-            self.hand.remove(card)
-            card.location = 'inkwell'
-            card.is_exerted = True  # Inked cards enter exerted
-            self.inkwell.append(card)
-            return True
-        return False
+        if self.has_inked_this_turn:
+            # Already inked a card this turn
+            return False
+        if not card.inkable:
+            return False
+        if card not in self.hand:
+            raise ValueError("Card to be inked is not in the player's hand.")
+
+        self.hand.remove(card)
+        self.inkwell.append(card)
+        card.location = 'inkwell'
+        card.is_exerted = True  # Inking a card exerts it for the turn
+        self.has_inked_this_turn = True
+        return True
 
     def exert_ink(self, amount: int):
         """Exerts a specified number of ready ink cards."""
@@ -402,6 +418,39 @@ class Player:
 
 
 class GameState:
+    """Manages the entire state of a game, including players, turn, and phase."""
+
+    def __init__(self, player1: Player, player2: Player):
+        """Initializes the game state.
+
+        Args:
+            player1: The first player.
+            player2: The second player.
+        """
+        self.players = [player1, player2]
+        self.turn = 1
+        self.current_player_index = 0  # Player 1 starts
+
+    @property
+    def current_player(self) -> Player:
+        """Returns the player whose turn it is."""
+        return self.players[self.current_player_index]
+
+    def start_turn(self):
+        """Handles the beginning phase of a turn: readying cards and drawing."""
+        self.current_player.has_inked_this_turn = False
+        self.current_player.ready_cards()
+        self.current_player.draw_cards(1)
+
+    def end_turn(self):
+        """Advances to the next player's turn and starts their turn."""
+        self.current_player_index = (self.current_player_index + 1) % len(self.players)
+        if self.current_player_index == 0:
+            self.turn += 1
+        self.start_turn()
+
+
+class Game:
     """The main container for the entire state of a single game."""
     def __init__(self, player1: Player, player2: Player):
         self.players: Dict[int, Player] = {player1.player_id: player1, player2.player_id: player2}

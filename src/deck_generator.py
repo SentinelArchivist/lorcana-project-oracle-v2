@@ -58,18 +58,22 @@ class DeckGenerator:
         random.shuffle(card_pool)
         return tuple(sorted(card_pool[:60]))
 
-    def get_deck_inks(self, deck: list[int]) -> set[str]:
-        """Determines the set of inks present in a given deck of card IDs."""
+    def get_deck_inks(self, deck: list[int]) -> tuple[str, ...]:
+        """Determines the tuple of inks present in a given deck of card IDs."""
         # Convert numpy.ndarray to a hashable tuple for dictionary key usage
-        deck_tuple = tuple(deck)
+        # Force conversion to a tuple of standard Python integers to ensure hashability.
+        # This handles lists, tuples, and numpy arrays of various int types.
+        deck_tuple = tuple(int(x) for x in deck)
         if deck_tuple in self._memo_get_deck_inks:
             return self._memo_get_deck_inks[deck_tuple]
 
         deck_names = [self.id_to_card[card_id] for card_id in deck]
         inks = set()
+        # Pre-creating this series is faster than repeated lookups inside the loop
         name_to_color = self.card_df.set_index('Name')['Color']
         for card_name in set(deck_names):
             card_colors_lookup = name_to_color.get(card_name)
+            # Handle cases where a card might appear multiple times with different data (shouldn't happen with good data)
             if isinstance(card_colors_lookup, pd.Series):
                 card_colors = card_colors_lookup.iloc[0]
             else:
@@ -78,8 +82,11 @@ class DeckGenerator:
                 for color in str(card_colors).split(', '):
                     if color in self.ink_colors:
                         inks.add(color)
-        self._memo_get_deck_inks[deck_tuple] = inks
-        return inks
+
+        # Convert to a sorted tuple for consistent hashing and to meet requirements
+        result_tuple = tuple(sorted(list(inks)))
+        self._memo_get_deck_inks[deck_tuple] = result_tuple
+        return result_tuple
 
     def generate_initial_population(self, num_decks: int) -> list[list[int]]:
         """Generates a population of unique decks represented by card IDs."""

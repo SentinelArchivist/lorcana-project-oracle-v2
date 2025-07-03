@@ -7,7 +7,7 @@ from src.evolution import FitnessCalculator
 class GeneticAlgorithm:
     """Manages the genetic algorithm process for evolving Lorcana decks."""
 
-    def __init__(self, deck_generator: DeckGenerator, fitness_calculator: FitnessCalculator, population_size: int, num_generations: int, num_parents_mating: int, on_generation_callback=None):
+    def __init__(self, deck_generator: DeckGenerator, fitness_calculator: FitnessCalculator, population_size: int, num_generations: int, num_parents_mating: int, on_generation_callback=None, max_turns_per_game: int = 50):
         """
         Initializes the Genetic Algorithm.
 
@@ -25,6 +25,7 @@ class GeneticAlgorithm:
         self.num_generations = num_generations
         self.num_parents_mating = num_parents_mating
         self.on_generation_callback = on_generation_callback
+        self.max_turns_per_game = max_turns_per_game
         self.best_solution = None
         self.best_solution_fitness = -1
         self.best_solution_detailed_results = {}
@@ -91,35 +92,48 @@ class GeneticAlgorithm:
 
     def _mutation_func(self, offspring, ga_instance):
         """
-        Custom mutation function for pygad.
-        It swaps one card in the deck for another from the valid pool,
-        ensuring the 2-ink and 4-copy rules are maintained.
+        Custom mutation function for pygad. It iterates through each offspring (deck)
+        in the population and applies a mutation to it, ensuring the 2-ink and
+        4-copy rules are maintained.
 
         Args:
-            offspring (list): The offspring (deck of card IDs) to be mutated.
+            offspring (numpy.ndarray): The population of offspring solutions (2D array).
             ga_instance: The pygad.GA instance.
 
         Returns:
-            list: The mutated offspring (deck of card IDs).
+            numpy.ndarray: The mutated population of offspring.
         """
-        mutated_offspring = offspring.copy()
-        offspring_inks = tuple(sorted(self.deck_generator.get_deck_inks(mutated_offspring)))
-        valid_card_names = self.deck_generator.ink_pair_card_lists.get(offspring_inks, [])
-        if not valid_card_names:
-            return mutated_offspring
-        
-        valid_card_pool_ids = [self.deck_generator.card_to_id[name] for name in valid_card_names]
+        mutated_population = []
+        for individual_offspring in offspring:
+            mutated_individual = individual_offspring.copy()
 
-        max_attempts = 100
-        for _ in range(max_attempts):
-            idx_to_replace = random.randrange(len(mutated_offspring))
-            new_card = random.choice(valid_card_pool_ids)
+            # The individual_offspring is a 1D numpy array, which get_deck_inks can handle
+            offspring_inks = tuple(sorted(self.deck_generator.get_deck_inks(mutated_individual)))
+            
+            valid_card_names = self.deck_generator.ink_pair_card_lists.get(offspring_inks, [])
+            if not valid_card_names:
+                mutated_population.append(mutated_individual)
+                continue
+            
+            valid_card_pool_ids = [self.deck_generator.card_to_id[name] for name in valid_card_names]
+            if not valid_card_pool_ids:
+                mutated_population.append(mutated_individual)
+                continue
 
-            if new_card != mutated_offspring[idx_to_replace] and mutated_offspring.tolist().count(new_card) < 4:
-                mutated_offspring[idx_to_replace] = new_card
-                return mutated_offspring
+            # Attempt to mutate one gene
+            max_attempts = 100
+            for _ in range(max_attempts):
+                idx_to_replace = random.randrange(len(mutated_individual))
+                new_card = random.choice(valid_card_pool_ids)
 
-        return offspring
+                # Use numpy for efficient counting in a numpy array
+                if new_card != mutated_individual[idx_to_replace] and np.count_nonzero(mutated_individual == new_card) < 4:
+                    mutated_individual[idx_to_replace] = new_card
+                    break  # Exit after one successful mutation
+            
+            mutated_population.append(mutated_individual)
+
+        return np.array(mutated_population)
 
     def _fitness_function_wrapper(self, ga_instance, solution, solution_idx):
         """
@@ -127,7 +141,9 @@ class GeneticAlgorithm:
         It stores detailed results for the best solution found.
         """
         deck_names = [self.deck_generator.id_to_card[gene] for gene in solution]
-        fitness, detailed_results = self.fitness_calculator.calculate_fitness(deck_names)
+        fitness, detailed_results = self.fitness_calculator.calculate_fitness(
+            deck_names, max_turns=self.max_turns_per_game
+        )
 
         # The best_solution attribute is a tuple of (solution, fitness, idx).
         # It's only updated after a generation, so this check is against the last gen's best.

@@ -18,7 +18,7 @@ class Action(ABC):
         pass
 
     def __repr__(self):
-        return f"{self.__class__.__name__}(score={self.score})"
+        return f"{self.__class__.__name__}" # Score is transient, not part of identity
 
 class InkAction(Action):
     def __init__(self, card: 'Card'):
@@ -29,7 +29,7 @@ class InkAction(Action):
         player.ink_card(self.card)
 
     def __repr__(self):
-        return f"InkAction(card={self.card.name}, score={self.score})"
+        return f"InkAction(card={self.card.name})"
 
 class PlayCardAction(Action):
     def __init__(self, card: 'Card', shift_target: Optional['Card'] = None):
@@ -42,8 +42,8 @@ class PlayCardAction(Action):
 
     def __repr__(self):
         if self.shift_target:
-            return f"PlayCardAction(card={self.card.name}, shift_on={self.shift_target.name}, score={self.score})"
-        return f"PlayCardAction(card={self.card.name}, score={self.score})"
+            return f"PlayCardAction(card={self.card.name}, shift_on={self.shift_target.name})"
+        return f"PlayCardAction(card={self.card.name})"
 
 class QuestAction(Action):
     def __init__(self, character: 'Card', support_target: Optional['Card'] = None):
@@ -55,7 +55,7 @@ class QuestAction(Action):
         player.quest(self.character, game.turn_number, self.support_target)
 
     def __repr__(self):
-        return f"QuestAction(character={self.character.name}, score={self.score})"
+        return f"QuestAction(character={self.character.name})"
 
 class ChallengeAction(Action):
     def __init__(self, attacker: 'Card', defender: 'Card'):
@@ -67,7 +67,7 @@ class ChallengeAction(Action):
         game.challenge(self.attacker, self.defender)
 
     def __repr__(self):
-        return f"ChallengeAction(attacker={self.attacker.name}, defender={self.defender.name}, score={self.score})"
+        return f"ChallengeAction(attacker={self.attacker.name}, defender={self.defender.name})"
 
 class SingAction(Action):
     def __init__(self, song_card: 'Card', singer: 'Card'):
@@ -79,7 +79,7 @@ class SingAction(Action):
         player.sing_song(self.song_card, self.singer, game.turn_number)
 
     def __repr__(self):
-        return f"SingAction(song={self.song_card.name}, singer={self.singer.name}, score={self.score})"
+        return f"SingAction(song={self.song_card.name}, singer={self.singer.name})"
 
 class ActivateAbilityAction(Action):
     def __init__(self, card: 'Card', ability_index: int):
@@ -91,7 +91,7 @@ class ActivateAbilityAction(Action):
         player.activate_ability(self.card, self.ability_index, game.turn_number)
 
     def __repr__(self):
-        return f"ActivateAbilityAction: Use {self.card.name}'s ability #{self.ability_index}, score={self.score}"
+        return f"ActivateAbilityAction(card={self.card.name}, ability_index={self.ability_index})"
 
 # --- Heuristics and Evaluation ---
 
@@ -292,6 +292,8 @@ def get_possible_actions(game: 'GameState', player: 'Player', has_inked: bool) -
 
     return actions
 
+MAX_ACTIONS_PER_TURN = 30  # Safety break to prevent infinite loops in AI
+
 def run_main_phase(game: 'GameState', player: 'Player'):
     """
     Runs the main phase for a player using a flexible, heuristic-driven loop.
@@ -299,15 +301,22 @@ def run_main_phase(game: 'GameState', player: 'Player'):
     until it decides to pass the turn.
     """
     has_inked_this_turn = False
+    executed_actions_this_turn = set()  # Track actions to prevent loops
+    actions_taken_count = 0
 
-    while True:
+    while actions_taken_count < MAX_ACTIONS_PER_TURN:
+        print(f"DEBUG: Turn {game.turn_number}, Player {player.player_id} - Before get_possible_actions")
         possible_actions = get_possible_actions(game, player, has_inked_this_turn)
-        
+        print(f"DEBUG: Turn {game.turn_number}, Player {player.player_id} - After get_possible_actions")
+
+        # Filter out actions that have already been taken this turn to prevent infinite loops
+        possible_actions = [action for action in possible_actions if repr(action) not in executed_actions_this_turn]
+
         if not possible_actions:
-            break # No more actions to take
+            break  # No more actions to take
 
         evaluate_actions(possible_actions, game, player)
-        
+
         possible_actions.sort(key=lambda a: a.score, reverse=True)
         best_action = possible_actions[0]
 
@@ -318,6 +327,8 @@ def run_main_phase(game: 'GameState', player: 'Player'):
 
         # Execute the best action
         best_action.execute(game, player)
+        executed_actions_this_turn.add(repr(best_action))  # Record the action
+        actions_taken_count += 1
 
         if isinstance(best_action, InkAction):
             has_inked_this_turn = True

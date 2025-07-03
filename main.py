@@ -13,6 +13,7 @@ POPULATION_SIZE = 50
 NUM_GENERATIONS = 100
 NUM_PARENTS_MATING = 10
 NUM_META_DECKS = 10
+MAX_TURNS_PER_GAME = 40  # Circuit breaker for each game simulation
 
 def main():
     """
@@ -130,7 +131,8 @@ def main():
                 population_size=POPULATION_SIZE,
                 num_generations=NUM_GENERATIONS,
                 num_parents_mating=NUM_PARENTS_MATING,
-                on_generation_callback=handle_generation_update
+                on_generation_callback=handle_generation_update,
+                max_turns_per_game=MAX_TURNS_PER_GAME
             )
             log_message("Genetic Algorithm initialized.")
             log_message(f"Starting evolution for {NUM_GENERATIONS} generations...")

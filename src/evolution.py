@@ -37,7 +37,7 @@ class FitnessCalculator:
         deck = Deck(card_objects)
         return Player(player_id=player_id, deck=deck)
 
-    def calculate_fitness(self, candidate_deck: list[str], games_per_matchup: int = 10) -> tuple[float, dict[str, float]]:
+    def calculate_fitness(self, candidate_deck: list[str], games_per_matchup: int = 10, max_turns: int = 100) -> tuple[float, dict[str, float]]:
         """
         Calculates the fitness of a candidate deck by simulating games against meta decks.
 
@@ -61,7 +61,7 @@ class FitnessCalculator:
             matchup_wins = 0
             for j in range(games_per_matchup):
                 goes_first = j % 2 == 0
-                winner = self.simulate_game(candidate_deck, meta_deck, goes_first)
+                winner = self.simulate_game(candidate_deck, meta_deck, goes_first, max_turns=max_turns)
                 if winner == "player1":
                     matchup_wins += 1
             
@@ -75,7 +75,7 @@ class FitnessCalculator:
         overall_win_rate = total_wins / total_games if total_games > 0 else 0.0
         return overall_win_rate, detailed_results
 
-    def simulate_game(self, deck1_list: list[str], deck2_list: list[str], goes_first: bool) -> str:
+    def simulate_game(self, deck1_list: list[str], deck2_list: list[str], goes_first: bool, max_turns: int) -> str:
         """
         Simulates a single game between two decks using the game engine.
 
@@ -95,7 +95,7 @@ class FitnessCalculator:
         else:
             game_state = GameState(player2, player1)
 
-        winner_obj = game_state.run_game()
+        winner_obj = game_state.run_game(max_turns=max_turns)
 
         if winner_obj is None:
             # Handle draws or unresolved games
