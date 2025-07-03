@@ -56,7 +56,7 @@ class DeckGenerator:
             card_pool.extend([card_id] * 4)
 
         random.shuffle(card_pool)
-        return card_pool[:60]
+        return tuple(sorted(card_pool[:60]))
 
     def get_deck_inks(self, deck: list[int]) -> set[str]:
         """Determines the set of inks present in a given deck of card IDs."""
@@ -87,8 +87,8 @@ class DeckGenerator:
         max_attempts = num_decks * 20
         attempts = 0
         while len(population) < num_decks and attempts < max_attempts:
-            deck = self.generate_deck()
-            population.add(tuple(sorted(deck)))
+            deck = self.generate_deck() # Now returns a sorted tuple
+            population.add(deck)
             attempts += 1
         
         if len(population) < num_decks:
