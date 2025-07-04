@@ -44,21 +44,27 @@ def main():
     progress_bar = ttk.Progressbar(main_frame, orient='horizontal', mode='determinate', length=100)
     progress_bar.pack(fill=tk.X, pady=(5, 10))
 
-    # Paned window for resizable log and deck display
-    paned_window = tk.PanedWindow(main_frame, orient=tk.HORIZONTAL)
-    paned_window.pack(fill=tk.BOTH, expand=True)
-
-    log_frame = tk.Frame(paned_window)
-    tk.Label(log_frame, text="Evolution Log").pack(anchor=tk.W)
+    # Create notebook (tabbed interface) for displaying different sections
+    notebook = ttk.Notebook(main_frame)
+    notebook.pack(fill=tk.BOTH, expand=True)
+    
+    # Tab 1: Evolution Log
+    log_frame = ttk.Frame(notebook)
     log_widget = scrolledtext.ScrolledText(log_frame, state=tk.DISABLED, wrap=tk.WORD, height=20)
     log_widget.pack(fill=tk.BOTH, expand=True)
-    paned_window.add(log_frame, width=500)
-
-    deck_frame = tk.Frame(paned_window)
-    tk.Label(deck_frame, text="Best Deck So Far").pack(anchor=tk.W)
+    notebook.add(log_frame, text="Evolution Log")
+    
+    # Tab 2: Best Deck
+    deck_frame = ttk.Frame(notebook)
     best_deck_widget = scrolledtext.ScrolledText(deck_frame, state=tk.DISABLED, wrap=tk.WORD, height=20)
     best_deck_widget.pack(fill=tk.BOTH, expand=True)
-    paned_window.add(deck_frame)
+    notebook.add(deck_frame, text="Best Deck")
+    
+    # Tab 3: Deck Analysis
+    analysis_frame = ttk.Frame(notebook)
+    deck_analysis_widget = scrolledtext.ScrolledText(analysis_frame, state=tk.DISABLED, wrap=tk.WORD, height=20)
+    deck_analysis_widget.pack(fill=tk.BOTH, expand=True)
+    notebook.add(analysis_frame, text="Deck Analysis")
 
     # Bottom frame for buttons
     button_frame = tk.Frame(main_frame)
@@ -85,6 +91,13 @@ def main():
             for card_name, count in card_counts.items():
                 best_deck_widget.insert(tk.END, f"{count}x {card_name}\n")
         best_deck_widget.config(state=tk.DISABLED)
+        
+    def update_deck_analysis_display(analysis_report):
+        deck_analysis_widget.config(state=tk.NORMAL)
+        deck_analysis_widget.delete('1.0', tk.END)
+        if analysis_report:
+            deck_analysis_widget.insert(tk.END, analysis_report)
+        deck_analysis_widget.config(state=tk.DISABLED)
 
     def update_ui(ga_object):
         ga_instance = ga_object.ga_instance
@@ -99,6 +112,10 @@ def main():
         # Use the deck_generator from the passed ga_object to map IDs to names
         deck_names = [ga_object.deck_generator.id_to_card[gene] for gene in best_solution]
         update_best_deck_display(deck_names)
+        
+        # Update deck analysis report if available
+        if hasattr(ga_object, 'get_deck_report') and ga_object.best_solution:
+            update_deck_analysis_display(ga_object.get_deck_report())
 
     def handle_generation_update(ga_object):
         # The callback now receives the entire GeneticAlgorithm object
@@ -157,6 +174,12 @@ def main():
                     log_message(f"  - vs. {deck_name}: {win_rate:.2%} win rate")
             else:
                 log_message("  - Detailed results not available.")
+                
+            # Generate and display deck analysis
+            log_message("\n--- Generating Deck Analysis Report ---")
+            update_deck_analysis_display(ga.get_deck_report())
+            log_message("Deck analysis report available in the 'Deck Analysis' tab.")
+            notebook.select(analysis_frame)  # Switch to analysis tab
 
         except FileNotFoundError:
             log_message(f"ERROR: Card dataset not found at '{CARD_DATASET_PATH}'.")

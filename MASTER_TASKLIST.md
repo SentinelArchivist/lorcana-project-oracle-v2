@@ -53,10 +53,10 @@ This document outlines the remaining tasks required to bring Project Oracle to f
   - [x] Modify the effect resolver to properly queue triggered abilities and resolve them according to active player priority.
   - [x] Add unit tests to validate correct resolution order of simultaneous triggers.
 
-- [ ] **Task 2.5: Add Deck Result Explanations**
-  - [ ] Implement analytics to identify key synergies in generated decks
-  - [ ] Create a system to explain card choices based on their performance in simulations
-  - [ ] Generate a brief report highlighting strengths and strategic approach of evolved decks
+- [x] **Task 2.5: Add Deck Result Explanations**
+  - [x] Implement analytics to identify key synergies in generated decks
+  - [x] Create a system to explain card choices based on their performance in simulations
+  - [x] Generate a brief report highlighting strengths and strategic approach of evolved decks
 
 - [ ] **Task 2.6: Handle Card Database Management**
   - [ ] Create a configurable system for handling meta-deck filenames with dates

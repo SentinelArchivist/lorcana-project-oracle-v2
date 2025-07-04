@@ -3,6 +3,7 @@ import random
 import numpy as np
 from src.deck_generator import DeckGenerator
 from src.evolution import FitnessCalculator
+from src.deck_analyzer import DeckAnalyzer
 
 class GeneticAlgorithm:
     """Manages the genetic algorithm process for evolving Lorcana decks."""
@@ -21,14 +22,19 @@ class GeneticAlgorithm:
         """
         self.deck_generator = deck_generator
         self.fitness_calculator = fitness_calculator
+        self.deck_analyzer = DeckAnalyzer(deck_generator.card_df)
+        
         self.population_size = population_size
         self.num_generations = num_generations
         self.num_parents_mating = num_parents_mating
         self.on_generation_callback = on_generation_callback
         self.max_turns_per_game = max_turns_per_game
+        
         self.best_solution = None
         self.best_solution_fitness = -1
         self.best_solution_detailed_results = {}
+        self.deck_analysis = None
+        self.deck_report = None
 
         self.initial_population = self.create_initial_population()
 
@@ -180,9 +186,40 @@ class GeneticAlgorithm:
             # Pass the entire instance of this class, not just the pygad instance
             self.on_generation_callback(self)
 
-    def _on_stop(self, ga_instance, last_fitness_values):
-        """Callback function for on_stop."""
-        print("Evolution stopped.")
+    def _on_stop(self, ga_instance, last_population):
+        """Callback function called after the genetic algorithm stops."""
+        solution, solution_fitness, solution_idx = ga_instance.best_solution()
+        print(f"Best solution found: fitness {solution_fitness:.4f}")
+    
+    def analyze_best_solution(self):
+        """
+        Analyzes the best solution deck and generates an explanation report.
+        """
+        if not self.best_solution:
+            return
+            
+        # Generate detailed analysis of the deck
+        self.deck_analysis = self.deck_analyzer.analyze_deck(
+            self.best_solution, 
+            self.best_solution_detailed_results
+        )
+        
+        # Generate a human-readable report
+        self.deck_report = self.deck_analyzer.generate_report(
+            "Evolved Deck", 
+            self.best_solution, 
+            self.best_solution_detailed_results
+        )
+        
+        return self.deck_analysis, self.deck_report
+    
+    def get_deck_report(self):
+        """
+        Returns the deck analysis report or generates it if not available.
+        """
+        if not self.deck_report and self.best_solution:
+            self.analyze_best_solution()
+        return self.deck_report
 
     def run(self):
         """
@@ -213,5 +250,8 @@ class GeneticAlgorithm:
         solution, solution_fitness, solution_idx = self.ga_instance.best_solution()
         self.best_solution = [self.deck_generator.id_to_card[gene] for gene in solution]
         self.best_solution_fitness = solution_fitness
+        
+        # Generate deck analysis and explanation report
+        self.analyze_best_solution()
 
         return self.best_solution, self.best_solution_fitness
