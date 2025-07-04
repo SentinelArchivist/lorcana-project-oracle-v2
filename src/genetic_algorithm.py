@@ -1,6 +1,7 @@
 import pygad
 import random
 import numpy as np
+import time
 from src.deck_generator import DeckGenerator
 from src.evolution import FitnessCalculator
 from src.deck_analyzer import DeckAnalyzer
@@ -8,7 +9,7 @@ from src.deck_analyzer import DeckAnalyzer
 class GeneticAlgorithm:
     """Manages the genetic algorithm process for evolving Lorcana decks."""
 
-    def __init__(self, deck_generator: DeckGenerator, fitness_calculator: FitnessCalculator, population_size: int, num_generations: int, num_parents_mating: int, on_generation_callback=None, max_turns_per_game: int = 50):
+    def __init__(self, deck_generator: DeckGenerator, fitness_calculator: FitnessCalculator, population_size: int, num_generations: int, num_parents_mating: int, on_generation_callback=None, max_turns_per_game: int = 50, progress_callback=None):
         """
         Initializes the Genetic Algorithm.
 
@@ -35,6 +36,13 @@ class GeneticAlgorithm:
         self.best_solution_detailed_results = {}
         self.deck_analysis = None
         self.deck_report = None
+        
+        # Track progress metrics
+        self.progress_callback = progress_callback
+        self.fitness_history = []
+        self.generation_times = []
+        self.last_generation_time = None
+        self.estimated_time_remaining = None
 
         self.initial_population = self.create_initial_population()
 
@@ -178,10 +186,43 @@ class GeneticAlgorithm:
 
     def _on_generation(self, ga_instance):
         """Callback function for on_generation to print progress and notify external listeners."""
+        # Record the current time
+        current_time = time.time()
+        
+        # Get current generation and best solution info
+        gen = ga_instance.generations_completed
+        best_solution, best_fitness, _ = ga_instance.best_solution()
+        
+        # Track fitness history
+        self.fitness_history.append(best_fitness)
+        
+        # Calculate time metrics
+        if self.last_generation_time is not None:
+            generation_time = current_time - self.last_generation_time
+            self.generation_times.append(generation_time)
+            
+            # Calculate estimated time remaining
+            if len(self.generation_times) >= 3:  # Need a few data points for a reasonable average
+                avg_time_per_gen = sum(self.generation_times[-5:]) / min(5, len(self.generation_times))
+                gens_remaining = ga_instance.num_generations - gen
+                self.estimated_time_remaining = avg_time_per_gen * gens_remaining
+        
+        self.last_generation_time = current_time
+        
         # Internal logging
-        print(f"Generation {ga_instance.generations_completed:3} | Best Fitness = {ga_instance.best_solution()[1]:.4f}")
+        print(f"Generation {gen:3} | Best Fitness = {best_fitness:.4f}")
 
-        # External callback
+        # External callbacks
+        if self.progress_callback:
+            progress_data = {
+                'generation': gen,
+                'max_generation': ga_instance.num_generations,
+                'best_fitness': best_fitness,
+                'fitness_history': self.fitness_history.copy(),
+                'estimated_time_remaining': self.estimated_time_remaining
+            }
+            self.progress_callback(progress_data)
+            
         if self.on_generation_callback:
             # Pass the entire instance of this class, not just the pygad instance
             self.on_generation_callback(self)
@@ -225,6 +266,10 @@ class GeneticAlgorithm:
         """
         Configures and runs the genetic algorithm evolution process.
         """
+        # Record start time for overall timing stats
+        self.start_time = time.time()
+        self.last_generation_time = self.start_time
+        
         initial_population_lists = [list(deck) for deck in self.initial_population]
         # The gene_space should define the range of possible gene values (card IDs).
         gene_space = range(len(self.deck_generator.unique_card_names))

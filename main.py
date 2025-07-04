@@ -5,6 +5,9 @@ import datetime
 import threading
 import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox, filedialog
+import matplotlib
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 from src.deck_generator import DeckGenerator
 from src.evolution import FitnessCalculator
@@ -41,15 +44,44 @@ def main():
     title_label = ttk.Label(top_frame, text="Lorcana Deck Evolution Engine", style="Header.TLabel")
     title_label.pack(side=tk.LEFT, anchor=tk.W)
 
-    stats_frame = tk.Frame(main_frame, pady=5)
-    stats_frame.pack(fill=tk.X)
-    gen_label = tk.Label(stats_frame, text="Generation: 0 / 0")
-    gen_label.pack(side=tk.LEFT, padx=(0, 10))
-    fitness_label = tk.Label(stats_frame, text="Best Fitness: N/A")
-    fitness_label.pack(side=tk.LEFT)
-
-    progress_bar = ttk.Progressbar(main_frame, orient='horizontal', mode='determinate', length=100)
-    progress_bar.pack(fill=tk.X, pady=(5, 10))
+    # Progress and Stats Frame - Using a grid layout for more organized display
+    progress_frame = ttk.LabelFrame(main_frame, text="Evolution Progress")
+    progress_frame.pack(fill=tk.X, pady=5)
+    
+    # Setup grid layout
+    progress_frame.columnconfigure(0, weight=1)
+    progress_frame.columnconfigure(1, weight=1)
+    progress_frame.columnconfigure(2, weight=1)
+    
+    # Row 1: Generation and Fitness
+    gen_label = ttk.Label(progress_frame, text="Generation: 0 / 0")
+    gen_label.grid(row=0, column=0, sticky="w", padx=5, pady=2)
+    
+    fitness_label = ttk.Label(progress_frame, text="Best Fitness: N/A")
+    fitness_label.grid(row=0, column=1, sticky="w", padx=5, pady=2)
+    
+    time_label = ttk.Label(progress_frame, text="Time Remaining: N/A")
+    time_label.grid(row=0, column=2, sticky="w", padx=5, pady=2)
+    
+    # Row 2: Progress Bar
+    progress_bar = ttk.Progressbar(progress_frame, orient='horizontal', mode='determinate', length=100)
+    progress_bar.grid(row=1, column=0, columnspan=3, sticky="ew", padx=5, pady=5)
+    
+    # Row 3: Progress Details
+    progress_details_label = ttk.Label(progress_frame, text="")
+    progress_details_label.grid(row=2, column=0, columnspan=3, sticky="w", padx=5, pady=2)
+    
+    # Row 4: Fitness Graph
+    fitness_graph_frame = ttk.Frame(progress_frame)
+    fitness_graph_frame.grid(row=3, column=0, columnspan=3, sticky="ew", padx=5, pady=5)
+    
+    # Create a figure for fitness history graph
+    fig, ax = plt.subplots(figsize=(8, 3))
+    ax.set_title('Fitness History')
+    ax.set_xlabel('Generation')
+    ax.set_ylabel('Fitness')
+    canvas = FigureCanvasTkAgg(fig, master=fitness_graph_frame)
+    canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
     # Create notebook (tabbed interface) for displaying different sections
     notebook = ttk.Notebook(main_frame)
@@ -165,14 +197,9 @@ def main():
         deck_analysis_widget.config(state=tk.DISABLED)
 
     def update_ui(ga_object):
+        """Update UI elements based on the current state of the GA object"""
         ga_instance = ga_object.ga_instance
-        gen = ga_instance.generations_completed
-        max_gen = ga_instance.num_generations
         best_solution, best_fitness, _ = ga_instance.best_solution()
-
-        gen_label.config(text=f"Generation: {gen} / {max_gen}")
-        fitness_label.config(text=f"Best Fitness: {best_fitness:.4f}")
-        progress_bar['value'] = (gen / max_gen) * 100
         
         # Use the deck_generator from the passed ga_object to map IDs to names
         deck_names = [ga_object.deck_generator.id_to_card[gene] for gene in best_solution]
@@ -183,8 +210,69 @@ def main():
             update_deck_analysis_display(ga_object.get_deck_report())
 
     def handle_generation_update(ga_object):
+        """Callback for generation updates - updates deck display"""
         # The callback now receives the entire GeneticAlgorithm object
         root.after(0, lambda: update_ui(ga_object))
+
+    def handle_progress_update(progress_data):
+        """Function to handle detailed progress updates"""
+        root.after(0, lambda: update_progress_display(progress_data))
+
+    def update_progress_display(progress_data):
+        """Update UI with detailed progress information"""
+        gen = progress_data['generation']
+        max_gen = progress_data['max_generation']
+        best_fitness = progress_data['best_fitness']
+        
+        # Update basic progress information
+        gen_label.config(text=f"Generation: {gen} / {max_gen}")
+        fitness_label.config(text=f"Best Fitness: {best_fitness:.4f}")
+        progress_bar['value'] = (gen / max_gen) * 100
+        
+        # Update time remaining
+        if progress_data['estimated_time_remaining'] is not None:
+            mins, secs = divmod(int(progress_data['estimated_time_remaining']), 60)
+            time_str = f"{mins} min {secs} sec"
+            time_label.config(text=f"Time Remaining: {time_str}")
+        
+        # Update trend information
+        fitness_history = progress_data['fitness_history']
+        if len(fitness_history) > 0:
+            fitness_trend = ""
+            if len(fitness_history) >= 5:
+                recent = fitness_history[-5:]
+                if all(recent[i] >= recent[i-1] for i in range(1, len(recent))):
+                    fitness_trend = "↑ Improving"
+                elif all(recent[i] <= recent[i-1] for i in range(1, len(recent))):
+                    fitness_trend = "↓ Decreasing"
+                elif recent[-1] > recent[-2]:
+                    fitness_trend = "→ Stable with recent improvement"
+                else:
+                    fitness_trend = "→ Stable"
+            progress_details_label.config(text=f"Trend: {fitness_trend}")
+            
+            # Update fitness history graph
+            update_fitness_graph(fitness_history)
+
+    def update_fitness_graph(fitness_history):
+        """Update the fitness history graph with latest data"""
+        # Clear previous plot
+        ax.clear()
+        
+        # Plot new data
+        generations = list(range(1, len(fitness_history) + 1))
+        ax.plot(generations, fitness_history, 'b-', marker='o', markersize=3)
+        
+        # Set titles and labels
+        ax.set_title('Fitness History')
+        ax.set_xlabel('Generation')
+        ax.set_ylabel('Fitness')
+        
+        # Add grid for better readability
+        ax.grid(True, linestyle='--', alpha=0.7)
+        
+        # Redraw canvas
+        canvas.draw()
 
     # --- Evolution Logic ---
     def refresh_meta_deck_list():
@@ -301,6 +389,7 @@ def main():
                 num_generations=NUM_GENERATIONS,
                 num_parents_mating=NUM_PARENTS_MATING,
                 on_generation_callback=handle_generation_update,
+                progress_callback=handle_progress_update,
                 max_turns_per_game=MAX_TURNS_PER_GAME
             )
             log_message("Genetic Algorithm initialized.")

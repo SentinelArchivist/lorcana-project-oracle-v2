@@ -74,10 +74,10 @@ This document outlines the remaining tasks required to bring Project Oracle to f
   - [x] Run the application and manually test every UI element (buttons, input fields, display areas) for correct functionality and layout.
   - [x] Document and fix any identified bugs, such as unresponsive elements or visual glitches.
 
-- [ ] **Task 3.2: Implement Real-Time GA Progress Feedback**
-  - [ ] Modify the GA `run` method to accept a callback function for reporting progress.
-  - [ ] Update the UI to include a progress bar, a generation counter (`Gen X / Y`), and a display for the current best fitness score.
-  - [ ] Run the GA in a separate thread from the main UI thread to prevent the application from freezing during the evolutionary process. Update the UI elements via the callback.
+- [x] **Task 3.2: Implement Real-Time GA Progress Feedback**
+  - [x] Modify the GA `run` method to accept a callback function for reporting progress.
+  - [x] Update the UI to include a progress bar, a generation counter (`Gen X / Y`), and a display for the current best fitness score.
+  - [x] Run the GA in a separate thread from the main UI thread to prevent the application from freezing during the evolutionary process. Update the UI elements via the callback.
 
 - [ ] **Task 3.3: Enhance Final Results Display**
   - [ ] Improve formatting and readability of the generated deck list.
