@@ -58,11 +58,11 @@ This document outlines the remaining tasks required to bring Project Oracle to f
   - [x] Create a system to explain card choices based on their performance in simulations
   - [x] Generate a brief report highlighting strengths and strategic approach of evolved decks
 
-- [ ] **Task 2.6: Handle Card Database Management**
-  - [ ] Create a configurable system for handling meta-deck filenames with dates
-  - [ ] Implement set rotation functionality to filter cards based on legality
-  - [ ] Add an option to restrict card pools by expansion set
-  - [ ] Ensure the card database stays up-to-date with the latest releases
+- [x] **Task 2.6: Handle Card Database Management**
+  - [x] Create a configurable system for handling meta-deck filenames with dates
+  - [x] Implement set rotation functionality to filter cards based on legality
+  - [x] Add an option to restrict card pools by expansion set
+  - [x] Ensure the card database stays up-to-date with the latest releases
 
 ---
 

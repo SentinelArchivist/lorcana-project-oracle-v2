@@ -2,29 +2,31 @@ import pandas as pd
 import random
 import itertools
 import os
+from src.card_database_manager import CardDatabaseManager
 
 class DeckGenerator:
     """Generates legal Lorcana decks based on a master card dataset."""
 
-    def __init__(self, card_dataset_path: str = 'data/processed/lorcana_card_master_dataset.csv'):
-        """Initializes the generator with the path to the card data."""
-        # If the default path is used, construct an absolute path to be robust
-        if card_dataset_path == 'data/processed/lorcana_card_master_dataset.csv':
-            script_dir = os.path.dirname(__file__)
-            project_root = os.path.abspath(os.path.join(script_dir, '..'))
-            card_dataset_path = os.path.join(project_root, 'data', 'processed', 'lorcana_card_master_dataset.csv')
+    def __init__(self, card_dataset_path: str = 'data/processed/lorcana_card_master_dataset.csv', legal_sets=None):
+        """Initializes the generator with the path to the card data.
 
-        card_pool = pd.read_csv(card_dataset_path)
-        card_pool = card_pool[card_pool['Set_Name'] != 'Lorcana TCG Quick Start Decks']
-        self.card_df = card_pool
+        Args:
+            card_dataset_path: Path to the card dataset
+            legal_sets: Optional set of legal set names to filter by
+        """
+        # Initialize the card database manager
+        self.db_manager = CardDatabaseManager(card_dataset_path=card_dataset_path)
+        
+        # Get filtered card pool based on legal sets
+        self.card_df = self.db_manager.get_filtered_card_pool(legal_sets)
 
         # Create card <-> ID mappings
         self.unique_card_names = sorted(list(self.card_df['Name'].unique()))
         self.card_to_id = {name: i for i, name in enumerate(self.unique_card_names)}
         self.id_to_card = {i: name for i, name in enumerate(self.unique_card_names)}
 
-        self.colorless_cards = list(card_pool[card_pool['Color'].isna()]['Name'].unique())
-        inkable_cards = card_pool[(card_pool['Inkable'] == True) & (card_pool['Color'].notna())].copy()
+        self.colorless_cards = list(self.card_df[self.card_df['Color'].isna()]['Name'].unique())
+        inkable_cards = self.card_df[(self.card_df['Inkable'] == True) & (self.card_df['Color'].notna())].copy()
         self.ink_colors = ['Amber', 'Amethyst', 'Emerald', 'Ruby', 'Sapphire', 'Steel']
         
         self.inkable_card_colors = {}
