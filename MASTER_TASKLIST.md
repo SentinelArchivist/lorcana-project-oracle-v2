@@ -28,15 +28,15 @@ This document outlines the remaining tasks required to bring Project Oracle to f
   - [x] Design and implement the logic required to handle more complex, conditional targeting (e.g., "choose a character with cost 3 or less," "choose an exerted character").
   - [x] Add new, specific unit tests to `tests/test_game_engine.py` to validate the new targeting capabilities.
 
-- [ ] **Task 2.2: Implement Advanced AI Heuristics**
-  - [ ] Research and design a system for quantifying card synergy within a deck or hand. This may involve pre-calculating synergy scores or evaluating them at runtime.
-  - [ ] Implement the composite board state evaluation function described in the programmer's guide (section 5.2), incorporating lore delta, potential lore, board presence, and card advantage factors.
-  - [ ] Enhance the inkwell choice heuristic to better evaluate cards based on cost vs. turn number, redundancy, situational usefulness, and core win condition status.
-  - [ ] Implement limited lookahead analysis to anticipate opponent responses as outlined in section 5.3 of the guide.
-  - [ ] Integrate all these heuristics into the `Player`'s decision-making process in `src/game_engine/player_logic.py`.
-  - [ ] Add unit tests to `tests/test_game_engine.py` to verify that the AI makes different (and better) decisions with these enhancements.
+- [x] **Task 2.2: Implement Advanced AI Heuristics**
+  - [x] Research and design a system for quantifying card synergy within a deck or hand. This may involve pre-calculating synergy scores or evaluating them at runtime.
+  - [x] Implement the composite board state evaluation function described in the programmer's guide (section 5.2), incorporating lore delta, potential lore, board presence, and card advantage factors.
+  - [x] Enhance the inkwell choice heuristic to better evaluate cards based on cost vs. turn number, redundancy, situational usefulness, and core win condition status.
+  - [x] Implement limited lookahead analysis to anticipate opponent responses as outlined in section 5.3 of the guide.
+  - [x] Integrate all these heuristics into the `Player`'s decision-making process in `src/game_engine/player_logic.py`.
+  - [x] Add unit tests to verify that the AI makes different (and better) decisions with these enhancements.
 
-  - [ ] **Task 2.3: Implement Missing Card Types and Keywords**
+- [ ] **Task 2.3: Implement Missing Card Types and Keywords**
   - [ ] **Location Cards**
     - [x] Complete the implementation of Location card type with move cost mechanics
     - [ ] Add passive lore gain at start of turn for Locations with lore value
@@ -48,7 +48,7 @@ This document outlines the remaining tasks required to bring Project Oracle to f
     - [ ] Implement Sing Together mechanic to allow multiple characters to exert for a song
   - [ ] Add unit tests for each newly implemented card type and keyword
 
-- [ ] **Task 2.4: Implement "The Bag" for Simultaneous Trigger Resolution**
+- [ ] **Task 2.3: Implement "The Bag" for Simultaneous Trigger Resolution**
   - [ ] Design and implement the mechanism for tracking and resolving simultaneous ability triggers as described in section 1.4 of the programmer's guide.
   - [ ] Modify the effect resolver to properly queue triggered abilities and resolve them according to active player priority.
   - [ ] Add unit tests to validate correct resolution order of simultaneous triggers.

@@ -1,9 +1,10 @@
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Tuple
 from abc import ABC, abstractmethod
 
 # To avoid circular imports, we'll use string type hints for game engine classes
 # and import them only for type checking if necessary.
 from typing import TYPE_CHECKING
+from .advanced_heuristics import evaluate_board_state, evaluate_inkwell_candidate, perform_lookahead_analysis
 if TYPE_CHECKING:
     from .game_engine import Card, GameState, Player
 
@@ -97,126 +98,182 @@ class ActivateAbilityAction(Action):
 
 def evaluate_actions(actions: List[Action], game: 'GameState', player: 'Player'):
     """
-    Scores each possible action based on a set of heuristics.
+    Scores each possible action based on a comprehensive set of heuristics.
     This is the core 'brain' of the AI.
     """
+    # First, get the baseline board evaluation to compare against
+    baseline_score = evaluate_board_state(game, player.player_id)
+    
+    # Use lookahead analysis for initial scoring
+    scored_actions = perform_lookahead_analysis(game, player, actions)
+    
+    # Update the action scores
+    for action, score in scored_actions:
+        action.score = score
+    
+    # Add more detailed heuristics for each action type
     for action in actions:
         if isinstance(action, QuestAction):
-            # Base score is the lore gained.
+            # Base score is the lore gained
             score = action.character.lore or 0
             if action.character.has_keyword('Support'):
-                # Small bonus for using support
-                score += 0.5
+                # Bonus for using support
+                score += 1.5
 
-            # Risk assessment: check if questing makes the character vulnerable to banishment.
+            # Risk assessment: check if questing makes the character vulnerable to banishment
             opponent = game.get_opponent(player.player_id)
             character_at_risk = action.character
             for opponent_char in opponent.play_area:
-                # Can the opponent's character challenge ours?
-                if (opponent_char.strength or 0) >= (character_at_risk.willpower or 999) - character_at_risk.damage_counters:
-                    # If so, this is a risky move. Penalize it based on the value of our card.
-                    risk_penalty = (character_at_risk.strength or 0) + (character_at_risk.willpower or 0) + (character_at_risk.lore or 0)
-                    score -= risk_penalty
-                    break # One threat is enough to penalize the action
+                if (opponent_char.card_type == 'Character' and 
+                    not opponent_char.is_exerted and 
+                    opponent_char.strength >= character_at_risk.willpower):
+                    # Character could be banished by a challenge; major penalty
+                    score -= 3
+                    break
+            
+            # Higher bonus for questing when close to winning
+            if player.lore + score >= 20:  # Would win the game
+                score += 10
+            elif player.lore >= 15:  # Close to winning
+                score += 3
+            
+            action.score = score
+
+        elif isinstance(action, PlayCardAction):
+            # Base score uses a formula: Value = (Card power / Cost) * scaling factor
+            # For characters, power = strength + willpower + lore
+            card = action.card
+            cost = card.cost or 1  # Avoid division by zero
+            score = 0
+
+            if card.card_type == 'Character':
+                # Character value calculation
+                power = (card.strength or 0) + (card.willpower or 0) + (card.lore or 0)
+                score = (power / cost) * 2.5
+
+                # Bonus for good keywords
+                if card.has_keyword('Evasive'):
+                    score += 1.5
+                if card.has_keyword('Ward'):
+                    score += 2.0
+                if card.has_keyword('Resist'):
+                    score += 1.5
+                if card.has_keyword('Challenger'):
+                    score += 1.0
+                if card.has_keyword('Rush'):
+                    score += 1.2
+
+                # Penalty for Reckless (forces bad attacks)
+                if card.has_keyword('Reckless'):
+                    score -= 1.0
+
+                # Shift bonus if there's a valid target
+                if card.has_keyword('Shift') and action.shift_target:
+                    score += 3.0
+                    
+                # Singer bonus for song synergy
+                if card.has_keyword('Singer'):
+                    # Count songs in hand that this character could sing
+                    singer_value = card.get_keyword_value('Singer') or 0
+                    eligible_songs = sum(1 for c in player.hand 
+                                        if c.card_type == 'Action' and 
+                                        hasattr(c, 'song') and c.song and 
+                                        c.cost <= singer_value)
+                    score += eligible_songs * 0.8
+
+            elif card.card_type == 'Item':
+                # Value for items based on their utility
+                score = 3.5
+                
+                # Check for synergy with board
+                if "gain +1 strength" in str(card.abilities).lower():
+                    # More valuable if we have many characters
+                    character_count = sum(1 for c in player.play_area if c.card_type == 'Character')
+                    score += character_count * 0.3
+
+            elif card.card_type == 'Action':
+                # Value for actions
+                score = 3.5
+                
+                # Songs are valued differently
+                if hasattr(card, 'song') and card.song:
+                    # Check if we have singers to use it
+                    singers = [c for c in player.play_area 
+                              if c.card_type == 'Character' and 
+                              not c.is_exerted and 
+                              c.has_keyword('Singer') and
+                              c.get_keyword_value('Singer') >= card.cost]
+                    if singers:
+                        score += 2.0  # Bonus if we can sing it for free
+            
+            elif card.card_type == 'Location':
+                # Locations with lore are very valuable
+                if hasattr(card, 'lore') and card.lore > 0:
+                    score = card.lore * 3.5
+                else:
+                    score = 2.5
+
+            # Final adjustment based on cost vs. current turn
+            # Prefer playing cheaper cards early, expensive cards later
+            turn_factor = min(game.turn_number / 10, 1.0)  # 0.1 to 1.0
+            if cost > game.turn_number + 2:
+                # Penalty for playing expensive cards too early
+                score -= (cost - game.turn_number - 2) * (1 - turn_factor)
+            else:
+                # Bonus for playing appropriately costed cards
+                score += (game.turn_number - cost + 2) * turn_factor * 0.3
 
             action.score = score
 
         elif isinstance(action, ChallengeAction):
-            # Heuristic for evaluating a challenge trade.
             attacker = action.attacker
             defender = action.defender
-            
-            # Simulate damage
-            attacker_strength = (attacker.strength or 0) + player.temporary_strength_mods.get(attacker.unique_id, 0)
+            score = 0
+
+            # Basic damage calculation
+            attacker_damage = attacker.strength
+            defender_damage = defender.strength
+
+            # Apply any keyword modifiers
             if attacker.has_keyword('Challenger'):
-                challenger_bonus = attacker.get_keyword_value('Challenger')
-                if challenger_bonus:
-                    attacker_strength += challenger_bonus
+                attacker_damage += 2  # Challenger adds 2 strength in challenges
 
-            damage_to_defender = attacker_strength
-            if defender.has_keyword('Resist'):
-                resist_value = defender.get_keyword_value('Resist')
-                if resist_value:
-                    damage_to_defender = max(0, damage_to_defender - resist_value)
-            
-            defender_will_be_banished = (defender.damage_counters + damage_to_defender) >= (defender.willpower or 999)
-            attacker_will_be_banished = (attacker.damage_counters + (defender.strength or 0)) >= (attacker.willpower or 999)
+            if defender.has_keyword('Evasive'):
+                defender_damage = 0  # Evasive prevents return damage
 
-            # Scoring based on trade outcome
-            score = 0
-            if defender_will_be_banished:
-                # Big score for banishing an opponent's character
-                score += (defender.strength or 0) + (defender.willpower or 0) + (defender.lore or 0)
-            if attacker_will_be_banished:
-                # Negative score for losing our character
-                score -= (attacker.strength or 0) + (attacker.willpower or 0) + (attacker.lore or 0)
-            
-            # Bonus for removing a character with lore
-            if defender_will_be_banished and (defender.lore or 0) > 0:
-                score += defender.lore * 1.5
+            # Core score logic: Does attacker banish defender?
+            attacker_banishes_defender = attacker_damage >= defender.willpower
 
-            # Opportunity cost: subtract the lore the attacker could have gained by questing.
-            score -= (attacker.lore or 0)
+            # Does defender banish attacker?
+            defender_banishes_attacker = defender_damage >= attacker.willpower
 
-            action.score = score
+            # Calculate trade value
+            if attacker_banishes_defender:
+                # Base score for banishing = defender's total stats
+                score += (defender.strength or 0) + (defender.willpower or 0) + (defender.lore or 0) * 1.5
 
-        elif isinstance(action, PlayCardAction):
-            # Heuristic: score is based on card type, stats, cost, and abilities.
-            card = action.card
-            score = 0
+                # Extra value for banishing an unexerted character (tempo gain)
+                if not defender.is_exerted:
+                    score += 3
 
-            if card.card_type == 'Location':
-                # Locations are valued for passive lore and survivability.
-                score = ((card.lore or 0) * 5) + (card.willpower or 0) - card.cost
-            else:
-                # For Characters and Items, a simple stat-based score.
-                score = (card.strength or 0) + (card.willpower or 0) + (card.lore or 0) - card.cost
+            if defender_banishes_attacker:
+                # Cost for being banished = attacker's total stats
+                score -= (attacker.strength or 0) + (attacker.willpower or 0) + (attacker.lore or 0) * 1.5
 
-            # Add score for valuable keywords
-            keyword_scores = {
-                'Evasive': 5,
-                'Ward': 5,
-                'Rush': 10, # Rush provides immediate tempo and board impact
-                'Bodyguard': 7, # Bodyguard protects other valuable characters
-            }
-            for keyword in card.keywords:
-                score += keyword_scores.get(keyword, 0)
-                if keyword.startswith('Resist'):
-                    resist_value = card.get_keyword_value('Resist')
-                    if resist_value:
-                        # Durability is valuable. Score is the resist amount.
-                        score += resist_value
-                elif keyword.startswith('Challenger'):
-                    challenger_value = card.get_keyword_value('Challenger')
-                    if challenger_value:
-                        # Being a better attacker is valuable.
-                        score += challenger_value
-                elif keyword == 'Support':
-                    # The value of support is the strength it can grant.
-                    score += card.strength or 0
-                elif keyword.startswith('Singer'):
-                    singer_value = card.get_keyword_value('Singer')
-                    if singer_value:
-                        # The value of a singer is the ink it can save.
-                        score += singer_value
-                elif keyword == 'Vanish':
-                    # The value of Vanish is the lore you can gain by banishing it.
-                    score += card.lore or 0
+            # Evaluate special cases: Don't attack if it's a very bad trade
+            if defender_banishes_attacker and not attacker_banishes_defender:
+                # Bad trade, major penalty
+                score -= 6
+                if attacker.lore and attacker.lore > 2:  # Don't sacrifice high-lore characters
+                    score -= attacker.lore * 3
 
-            # Add score for beneficial OnPlay abilities for any card type
-            for ability in card.abilities:
-                if isinstance(ability, dict):
-                    # Handle abilities as dictionaries
-                    if ability.get('trigger') == 'OnPlay':
-                        if ability.get('effect') == 'DrawCard':
-                            # Drawing a card is very valuable.
-                            score += 28
-                elif hasattr(ability, 'trigger'):
-                    # Handle abilities as objects with attributes (backward compatibility)
-                    if ability.trigger == 'OnPlay':
-                        if ability.effect == 'DrawCard':
-                            # Drawing a card is very valuable.
-                            score += 28
+            # Reckless characters MUST challenge
+            if attacker.has_keyword('Reckless'):
+                score += 15  # High bonus to ensure this happens
+                
+            # Rush characters get bonus for early challenges
+            if attacker.has_keyword('Rush') and game.turn_number <= 3:
+                score += 2
 
             action.score = score
 
@@ -261,7 +318,16 @@ def evaluate_actions(actions: List[Action], game: 'GameState', player: 'Player')
             ability = action.card.abilities[action.ability_index]
             # Heuristic: score based on the effect.
             # This is a simplified placeholder. A real AI would have complex scoring.
-            if ability.effect == 'DrawCard':
+            
+            # Handle both dictionary-style abilities and object abilities
+            if isinstance(ability, dict):
+                effect = ability.get('effect')
+            elif hasattr(ability, 'effect'):
+                effect = ability.effect
+            else:
+                effect = None
+                
+            if effect == 'DrawCard':
                 action.score = 25 # Drawing is very good
             else:
                 action.score = 5 # Generic positive score for doing something
@@ -302,9 +368,6 @@ def get_possible_actions(game: 'GameState', player: 'Player', has_inked: bool) -
         # A character that is Reckless MUST challenge if able.
         if char.has_keyword('Reckless'):
             valid_targets = player.get_valid_challenge_targets(char, opponent)
-            # Additional safety check to ensure we're not challenging the same card
-            valid_targets = [target for target in valid_targets 
-                            if target.unique_id != char.unique_id and target.name != char.name]
             if valid_targets:
                 # This character can only challenge. Add challenge actions and nothing else for this character.
                 for defender in valid_targets:
@@ -324,9 +387,6 @@ def get_possible_actions(game: 'GameState', player: 'Player', has_inked: bool) -
 
         # Challenge Actions (for non-reckless characters)
         valid_targets = player.get_valid_challenge_targets(char, opponent)
-        # Additional safety check to ensure we're not challenging the same card
-        valid_targets = [target for target in valid_targets 
-                        if target.unique_id != char.unique_id and target.name != char.name]
         for defender in valid_targets:
             actions.append(ChallengeAction(char, defender))
 
@@ -380,22 +440,43 @@ def run_main_phase(game: 'GameState', player: 'Player'):
         print(f"DEBUG: Turn {game.turn_number}, Player {player.player_id} - Before get_possible_actions")
         possible_actions = get_possible_actions(game, player, has_inked_this_turn)
         print(f"DEBUG: Turn {game.turn_number}, Player {player.player_id} - After get_possible_actions")
-
+        
+        # Print all possible actions for debugging
+        print(f"DEBUG: All possible actions: {[repr(a) for a in possible_actions]}")
+        
         # Filter out actions that have already been taken this turn to prevent infinite loops
         possible_actions = [action for action in possible_actions if repr(action) not in executed_actions_this_turn]
-
+        
         if not possible_actions:
+            print("DEBUG: No more possible actions, breaking")
             break  # No more actions to take
 
+        # Use advanced heuristics for action evaluation
         evaluate_actions(possible_actions, game, player)
 
+        # Print scores for debugging
+        for action in possible_actions:
+            print(f"DEBUG: Action {repr(action)} has score {action.score}")
+            
         possible_actions.sort(key=lambda a: a.score, reverse=True)
         best_action = possible_actions[0]
+        print(f"DEBUG: Selected best action: {repr(best_action)} with score {best_action.score}")
 
+        # Check if the best action is a challenge with a reckless character
+        is_reckless_challenge = isinstance(best_action, ChallengeAction) and best_action.attacker.has_keyword('Reckless')
+        
         # If the best available action has a negative or zero score, the AI decides to stop.
-        # Exception: Inking is a low-score setup move we should do if available.
-        if best_action.score <= 0 and not isinstance(best_action, InkAction):
-            break
+        # Exceptions: 
+        # 1. Inking is a low-score setup move we should do if available
+        # 2. Reckless characters must challenge regardless of score
+        # 3. First action of the turn - always do at least one thing if possible
+        if best_action.score <= 0 and not (isinstance(best_action, InkAction) or is_reckless_challenge):
+            # If we haven't done anything yet this turn, do at least one action even if it has a negative score
+            if actions_taken_count == 0:
+                print(f"DEBUG: Taking one action despite negative score: {repr(best_action)} with score {best_action.score}")
+            else:
+                print(f"DEBUG: Stopping because best action {repr(best_action)} has non-positive score {best_action.score}")
+                break
 
         # Execute the best action
         best_action.execute(game, player)
