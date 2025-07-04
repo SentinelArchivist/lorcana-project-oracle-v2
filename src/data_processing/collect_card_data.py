@@ -4,6 +4,10 @@ import json
 from src.data_processing.ability_parser import parse_abilities
 from src.data_processing.ability_transformer import transform_abilities
 import os
+from src.utils.logger import get_logger
+
+# Get the logger instance
+logger = get_logger()
 
 def fetch_lorcana_data(output_path: str = 'data/processed/lorcana_card_master_dataset.csv') -> pd.DataFrame:
     """
@@ -81,11 +85,11 @@ def fetch_lorcana_data(output_path: str = 'data/processed/lorcana_card_master_da
     return df
 
 if __name__ == "__main__":
-    print("Starting card data fetch...")
+    logger.info("Starting card data fetch...")
     try:
         processed_df = fetch_lorcana_data()
-        print(f"Successfully fetched and processed {len(processed_df)} cards.")
-        print(f"Master dataset saved to 'data/processed/lorcana_card_master_dataset.csv'.")
+        logger.info(f"Successfully fetched and processed {len(processed_df)} cards.")
+        logger.info(f"Master dataset saved to 'data/processed/lorcana_card_master_dataset.csv'.")
     except RuntimeError as e:
-        print(f"An error occurred: {e}")
+        logger.error(f"An error occurred: {e}")
 

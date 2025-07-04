@@ -1,9 +1,13 @@
 import os
 import pandas as pd
-import datetime
 import glob
+import datetime
 from typing import List, Dict, Set, Tuple, Optional, Union
+from src.utils.logger import get_logger
+from src.utils.error_handler import safe_operation, handle_file_operations
 
+# Get the logger instance
+logger = get_logger()
 
 class CardDatabaseManager:
     """
@@ -48,6 +52,7 @@ class CardDatabaseManager:
         # Current meta deck path
         self.current_meta_deck_path = None
     
+    @handle_file_operations
     def _load_card_dataset(self) -> pd.DataFrame:
         """
         Load the card dataset from the specified path.
@@ -55,11 +60,8 @@ class CardDatabaseManager:
         Returns:
             DataFrame containing card data
         """
-        try:
-            card_df = pd.read_csv(self.card_dataset_path)
-            return card_df
-        except FileNotFoundError:
-            raise FileNotFoundError(f"Card dataset not found at {self.card_dataset_path}")
+        card_df = pd.read_csv(self.card_dataset_path)
+        return card_df
     
     def get_filtered_card_pool(self, legal_sets: Optional[Set[str]] = None) -> pd.DataFrame:
         """
@@ -108,6 +110,7 @@ class CardDatabaseManager:
         # Try to parse dates from filenames (format: meta_decks_YYYY-MM-DD.csv)
         dated_files = []
         for f in files:
+            # Extract date from filename or use file modification time as fallback
             try:
                 # Extract date from filename
                 date_str = f.replace('meta_decks_', '').replace('.csv', '')
@@ -128,6 +131,7 @@ class CardDatabaseManager:
         
         return os.path.join(self.meta_decks_dir, most_recent)
     
+    @safe_operation(default_return=[], log_level='error')
     def load_meta_decks(self, meta_deck_path: Optional[str] = None) -> List[List[str]]:
         """
         Load meta decks from the specified path or the most recent file.
@@ -141,43 +145,34 @@ class CardDatabaseManager:
         if meta_deck_path is None:
             meta_deck_path = self.get_latest_meta_deck_file()
             
-        if meta_deck_path is None or not os.path.exists(meta_deck_path):
-            # No meta deck file available
+        if not meta_deck_path:
             return []
-        
+            
         self.current_meta_deck_path = meta_deck_path
         
-        try:
-            meta_decks_df = pd.read_csv(meta_deck_path)
+        # First attempt new format (list of deck lists)
+        deck_lists = []
+        df = pd.read_csv(meta_deck_path)
+        
+        # Group by Deck_Name
+        for deck_name, group in df.groupby('Deck_Name'):
+            deck_cards = []
+            for _, row in group.iterrows():
+                # Add the card to the deck multiple times based on Count
+                card_count = row.get('Count', 1)
+                card_name = row.get('Card_Name', '')
+                deck_cards.extend([card_name] * card_count)
+            deck_lists.append(deck_cards)
             
-            # Check if the file has the old format (Deck_Name, Card_Name columns)
-            if 'Deck_Name' in meta_decks_df.columns and 'Card_Name' in meta_decks_df.columns:
-                # Group by deck name and aggregate card names into a list
-                deck_lists = meta_decks_df.groupby('Deck_Name')['Card_Name'].apply(
-                    lambda x: list(x)).tolist()
-            # Check if it has the newer format (DeckName, CardName, Quantity columns)
-            elif 'DeckName' in meta_decks_df.columns and 'CardName' in meta_decks_df.columns and 'Quantity' in meta_decks_df.columns:
-                # Group by deck name, then expand based on quantity
-                deck_lists = []
-                for deck_name, group in meta_decks_df.groupby('DeckName'):
-                    deck = []
-                    for _, row in group.iterrows():
-                        deck.extend([row['CardName']] * int(row['Quantity']))
-                    deck_lists.append(deck)
-            else:
-                raise ValueError(f"Unrecognized meta deck file format in {meta_deck_path}")
-                
-            return deck_lists
-        except Exception as e:
-            print(f"Error loading meta decks: {e}")
-            return []
+        return deck_lists
     
+    @safe_operation(default_return=set(), log_level='error')
     def get_rotation_sets(self, rotation_date: Optional[datetime.date] = None) -> Set[str]:
         """
-        Determine which sets are legal based on a rotation date.
+        Get the list of legal sets based on a rotation date.
         
         Args:
-            rotation_date: Date for set rotation. If None, uses current date.
+            rotation_date: The date to check legality against. If None, uses current date.
             
         Returns:
             Set of legal set names
@@ -185,30 +180,33 @@ class CardDatabaseManager:
         if rotation_date is None:
             rotation_date = datetime.date.today()
         
-        # Get set information including release dates
-        sets_df = self.card_df[['Set_Name', 'Date_Added']].drop_duplicates()
-        
-        # Parse dates and filter by rotation date
         legal_sets = set()
-        for _, row in sets_df.iterrows():
+        
+        # Process each set in the card dataset
+        for _, row in self.card_df.drop_duplicates(subset=['Set_Name']).iterrows():
+            set_name = row.get('Set_Name')
+            date_added_str = row.get('Date_Added', None)
+            
+            # Skip entries with missing data
+            if not set_name or not date_added_str or pd.isna(date_added_str):
+                continue
+                
             try:
-                set_name = row['Set_Name']
-                date_str = row['Date_Added']
+                # Parse the date and check if it's before the rotation date
+                date_added = datetime.datetime.strptime(date_added_str, '%Y-%m-%d').date()
                 
-                # Skip sets without dates
-                if pd.isna(date_str) or not date_str:
-                    continue
-                    
-                # Parse the date from the card dataset
-                set_date = datetime.datetime.strptime(date_str.split('T')[0], '%Y-%m-%d').date()
+                # Sets are legal if they were added within 2 years of the rotation date
+                years_diff = (rotation_date.year - date_added.year)
+                is_legal = years_diff < 2 or (years_diff == 2 and 
+                                             rotation_date.month < date_added.month or 
+                                             (rotation_date.month == date_added.month and 
+                                              rotation_date.day <= date_added.day))
                 
-                # Lorcana typically has a 2-year rotation
-                # Sets released within 2 years of the rotation date are legal
-                if (rotation_date - set_date).days <= 730:  # 730 days = ~2 years
+                if is_legal:
                     legal_sets.add(set_name)
             except Exception as e:
                 # Skip sets with unparseable dates
-                print(f"Error processing set {row['Set_Name']}: {e}")
+                logger.debug(f"Error processing set {row['Set_Name']}: {e}")
                 continue
         
         return legal_sets

@@ -3,6 +3,10 @@ import random
 import itertools
 import os
 from src.card_database_manager import CardDatabaseManager
+from src.utils.logger import get_logger
+
+# Get the logger instance
+logger = get_logger()
 
 class DeckGenerator:
     """Generates legal Lorcana decks based on a master card dataset."""
@@ -108,6 +112,6 @@ class DeckGenerator:
             attempts += 1
         
         if len(population) < num_decks:
-            print(f"Warning: Could only generate {len(population)} unique decks out of {num_decks} requested.")
+            logger.warning(f"Could only generate {len(population)} unique decks out of {num_decks} requested.")
 
         return [list(deck) for deck in population]

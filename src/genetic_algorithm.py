@@ -2,9 +2,15 @@ import pygad
 import random
 import numpy as np
 import time
+from typing import List, Dict, Any, Optional, Tuple, Callable, Union
 from src.deck_generator import DeckGenerator
 from src.evolution import FitnessCalculator
 from src.deck_analyzer import DeckAnalyzer
+from src.utils.logger import get_logger
+from src.utils.error_handler import safe_operation
+
+# Get the logger instance
+logger = get_logger()
 
 class GeneticAlgorithm:
     """Manages the genetic algorithm process for evolving Lorcana decks."""
@@ -162,55 +168,50 @@ class GeneticAlgorithm:
 
         return np.array(mutated_population)
 
+    @safe_operation(default_return=-999, log_level='error')
     def _fitness_function_wrapper(self, ga_instance, solution, solution_idx):
         """
         A wrapper for the fitness function to be compatible with pygad.
         It stores detailed results for the best solution found.
         """
-        deck_names = [self.deck_generator.id_to_card[gene] for gene in solution]
         fitness, detailed_results = self.fitness_calculator.calculate_fitness(
-            deck_names, max_turns=self.max_turns_per_game
-        )
-
-        # The best_solution attribute is a tuple of (solution, fitness, idx).
-        # It's only updated after a generation, so this check is against the last gen's best.
-        # This is sufficient for our purpose of capturing the detailed results for the new best.
-        current_best_fitness = -1
-        if ga_instance.best_solution_generation != -1:
-            current_best_fitness = ga_instance.best_solution()[1]
-
-        if fitness > current_best_fitness:
+            solution, self.max_turns_per_game)
+        
+        # Store detailed results for the best solution (for analysis later)
+        if fitness > self.best_solution_fitness:
+            self.best_solution = solution
+            self.best_solution_fitness = fitness
             self.best_solution_detailed_results = detailed_results
-
+            
         return fitness
 
+    @safe_operation(log_level='warning')
     def _on_generation(self, ga_instance):
         """Callback function for on_generation to print progress and notify external listeners."""
-        # Record the current time
-        current_time = time.time()
-        
-        # Get current generation and best solution info
         gen = ga_instance.generations_completed
-        best_solution, best_fitness, _ = ga_instance.best_solution()
+        best_fitness = ga_instance.best_solution()[1]
         
-        # Track fitness history
+        # Store fitness for history tracking
         self.fitness_history.append(best_fitness)
         
-        # Calculate time metrics
-        if self.last_generation_time is not None:
+        # Calculate time per generation for ETA estimates
+        current_time = time.time()
+        if self.last_generation_time:
             generation_time = current_time - self.last_generation_time
             self.generation_times.append(generation_time)
             
-            # Calculate estimated time remaining
+            # Calculate estimated time remaining using a moving average
             if len(self.generation_times) >= 3:  # Need a few data points for a reasonable average
-                avg_time_per_gen = sum(self.generation_times[-5:]) / min(5, len(self.generation_times))
+                window_size = min(5, len(self.generation_times))
+                recent_times = self.generation_times[-window_size:]
+                avg_time_per_gen = sum(recent_times) / window_size
                 gens_remaining = ga_instance.num_generations - gen
                 self.estimated_time_remaining = avg_time_per_gen * gens_remaining
         
         self.last_generation_time = current_time
         
         # Internal logging
-        print(f"Generation {gen:3} | Best Fitness = {best_fitness:.4f}")
+        logger.info(f"Generation {gen:3} | Best Fitness = {best_fitness:.4f}")
 
         # External callbacks
         if self.progress_callback:
@@ -230,14 +231,16 @@ class GeneticAlgorithm:
     def _on_stop(self, ga_instance, last_population):
         """Callback function called after the genetic algorithm stops."""
         solution, solution_fitness, solution_idx = ga_instance.best_solution()
-        print(f"Best solution found: fitness {solution_fitness:.4f}")
+        logger.info(f"Best solution found: fitness {solution_fitness:.4f}")
     
+    @safe_operation(log_level='error')
     def analyze_best_solution(self):
         """
         Analyzes the best solution deck and generates an explanation report.
         """
         if not self.best_solution:
-            return
+            logger.warning("No best solution available to analyze")
+            return None, None
             
         # Generate detailed analysis of the deck
         self.deck_analysis = self.deck_analyzer.analyze_deck(
@@ -262,6 +265,7 @@ class GeneticAlgorithm:
             self.analyze_best_solution()
         return self.deck_report
 
+    @safe_operation(log_level='error')
     def run(self):
         """
         Configures and runs the genetic algorithm evolution process.
@@ -274,6 +278,8 @@ class GeneticAlgorithm:
         # The gene_space should define the range of possible gene values (card IDs).
         gene_space = range(len(self.deck_generator.unique_card_names))
 
+        # Configure and initialize the GA instance
+        logger.info(f"Configuring GA with population size: {self.population_size}, generations: {self.num_generations}")
         ga_instance = pygad.GA(
             num_generations=self.num_generations,
             num_parents_mating=self.num_parents_mating,
@@ -290,13 +296,17 @@ class GeneticAlgorithm:
         )
 
         self.ga_instance = ga_instance
+        logger.info("Starting GA evolution process...")
         self.ga_instance.run()
 
         solution, solution_fitness, solution_idx = self.ga_instance.best_solution()
         self.best_solution = [self.deck_generator.id_to_card[gene] for gene in solution]
         self.best_solution_fitness = solution_fitness
+        logger.info(f"GA evolution completed. Best fitness: {solution_fitness:.4f}")
         
         # Generate deck analysis and explanation report
+        logger.info("Analyzing best solution...")
         self.analyze_best_solution()
+        logger.info("Analysis complete")
 
         return self.best_solution, self.best_solution_fitness

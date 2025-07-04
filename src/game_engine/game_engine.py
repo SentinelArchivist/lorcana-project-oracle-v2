@@ -7,37 +7,34 @@ import pandas as pd
 from . import player_logic
 from .effect_resolver import EffectResolver
 from .trigger_bag import TriggerBag
+from src.utils.logger import get_logger
+from src.utils.error_handler import safe_operation
+
+# Get the logger instance
+logger = get_logger()
 
 if TYPE_CHECKING:
     from .game_engine import GameState
 
 class Card:
     """Represents a single instance of a card within a game."""
+    @safe_operation(log_level='error')
     def __init__(self, card_data: Dict[str, Any], owner_player_id: int):
         # Generate a unique ID if not provided
         self.unique_id = card_data.get('Unique_ID') or str(uuid.uuid4())
-        self.name = card_data.get('Name')
+        self.name = card_data.get('Name', 'Unnamed Card')
         self.cost = card_data.get('Cost', 0)
         self.inkable = card_data.get('Inkable', False)
         self.lore = card_data.get('Lore', 0)
         self.card_type = card_data.get('Type', 'Character') # Character, Action, Item
-        keywords_data = card_data.get('Keywords')
-        if isinstance(keywords_data, str):
-            self.keywords = {kw.strip() for kw in keywords_data.split(',')}
-        elif isinstance(keywords_data, list):
-            self.keywords = set(keywords_data)
-        else:
-            self.keywords = set()
-
-        schema_abilities_data = card_data.get('schema_abilities', '[]')
-        self.abilities: List[Dict[str, Any]] = []
-        if isinstance(schema_abilities_data, str):
-            try:
-                self.abilities = json.loads(schema_abilities_data)
-            except json.JSONDecodeError:
-                self.abilities = []
-        elif isinstance(schema_abilities_data, list):
-            self.abilities = schema_abilities_data
+        
+        # Initialize keywords from data
+        self._initialize_keywords(card_data.get('Keywords'))
+        
+        # Initialize abilities from data
+        self._initialize_abilities(card_data.get('schema_abilities', '[]'))
+        
+        # Set remaining attributes
         self.owner_player_id = owner_player_id
         self.is_exerted = False
         self.damage_counters = 0
@@ -47,6 +44,32 @@ class Card:
         self.willpower: Optional[int] = card_data.get('Willpower')
         self.strength_modifiers: List[Dict[str, Any]] = []
         self.keyword_modifiers: List[Dict[str, Any]] = []
+    
+    @safe_operation(default_return=set(), log_level='debug')
+    def _initialize_keywords(self, keywords_data) -> set:
+        """Initialize keywords from card data"""
+        if isinstance(keywords_data, str):
+            self.keywords = {kw.strip() for kw in keywords_data.split(',')}
+        elif isinstance(keywords_data, list):
+            self.keywords = set(keywords_data)
+        else:
+            self.keywords = set()
+        return self.keywords
+    
+    @safe_operation(default_return=[], log_level='debug')
+    def _initialize_abilities(self, schema_abilities_data) -> List[Dict[str, Any]]:
+        """Initialize abilities from card data"""
+        if isinstance(schema_abilities_data, str):
+            try:
+                self.abilities = json.loads(schema_abilities_data)
+            except json.JSONDecodeError:
+                logger.debug(f"Failed to parse abilities JSON for card {self.name}")
+                self.abilities = []
+        elif isinstance(schema_abilities_data, list):
+            self.abilities = schema_abilities_data
+        else:
+            self.abilities = []
+        return self.abilities
 
     def __repr__(self) -> str:
         return f"Card({self.name})"
@@ -64,8 +87,13 @@ class Card:
             total_strength += modifier.get('value', 0)
         return total_strength
 
+    @safe_operation(default_return=False, log_level='debug')
     def has_keyword(self, keyword: str) -> bool:
         """Checks if a card has a specific keyword ability, including temporary ones."""
+        if not keyword:
+            return False
+            
+        # Check base keywords
         if any(kw.lower().startswith(keyword.lower()) for kw in self.keywords):
             return True
             
@@ -87,8 +115,13 @@ class Card:
                 
         return False
 
+    @safe_operation(default_return=None, log_level='debug')
     def get_keyword_value(self, keyword: str) -> Optional[int]:
         """Get the numeric value associated with a keyword (e.g., Challenger +X, Shift X)."""
+        if not keyword:
+            return None
+            
+        # Check base keywords list
         for kw_string in self.keywords:
             if kw_string.lower().startswith(keyword.lower()):
                 parts = kw_string.split()
@@ -96,27 +129,36 @@ class Card:
                     try:
                         return int(parts[-1])
                     except (ValueError, IndexError):
-                        continue
+                        # If we can't parse the value, assume it's 1
+                        logger.debug(f"Could not parse value for keyword {keyword} in '{kw_string}', assuming 1")
+                        return 1
+                else:
+                    # If no value specified, assume it's just 1 (e.g. "Rush" means "Rush 1")
+                    return 1
+        
+        # Check for keyword values in ability schema
         for ability in self.abilities:
-            if isinstance(ability.get('value'), dict) and ability['value'].get('keyword', '').lower() == keyword.lower():
-                value = ability['value'].get('amount')
-                if isinstance(value, int):
-                    return value
-        for modifier in self.keyword_modifiers:
-            kw_string = modifier.get('keyword', '')
-            if kw_string.lower().startswith(keyword.lower()):
-                parts = kw_string.split()
-                if len(parts) > 1:
+            if isinstance(ability, dict) and isinstance(ability.get('value'), dict):
+                ability_value = ability['value']
+                if ability_value.get('keyword') == keyword and 'value' in ability_value:
                     try:
-                        return int(parts[-1])
+                        return int(ability_value['value'])
                     except (ValueError, IndexError):
-                        continue
+                        logger.debug(f"Could not parse value for keyword {keyword} in ability, assuming 1")
+                        return 1
+
         return None
 
-    def take_damage(self, amount: int):
-        """Applies damage to the card."""
-        if self.willpower is not None and amount > 0:
-            self.damage_counters += amount
+    @safe_operation(log_level='debug')
+    def take_damage(self, amount: int) -> int:
+        """Applies damage to the card and returns the new damage total."""
+        if amount < 0:
+            logger.warning(f"Attempted to apply negative damage {amount} to {self.name}")
+            amount = 0
+            
+        self.damage_counters += amount
+        logger.debug(f"{self.name} took {amount} damage, total: {self.damage_counters}")
+        return self.damage_counters
 
 class Deck:
     """Represents a player's deck of 60 cards."""
@@ -157,7 +199,7 @@ class Player:
                     card_info = card_data_rows.iloc[0].to_dict()
                     card_objects.append(Card(card_info, owner_player_id=self.player_id))
                 else:
-                    print(f"Warning: Card '{card_name}' not found in dataset. Skipping.")
+                    logger.warning(f"Card '{card_name}' not found in dataset. Skipping.")
             self.deck = Deck(card_objects)
         else:
             # If no deck information is provided, initialize with an empty deck.
@@ -425,7 +467,10 @@ class Player:
 
 class GameState:
     """Manages the entire state and flow of a Lorcana game."""
+    
+    @safe_operation(log_level='error')
     def __init__(self, player1: Player, player2: Player):
+        """Initialize the game state with two players."""
         self.players = {
             1: player1,
             2: player2
@@ -447,16 +492,22 @@ class GameState:
         """Gets the opponent of a given player."""
         return self.players[2 if player_id == 1 else 1]
 
-    def _check_for_winner(self):
+    @safe_operation(default_return=False, log_level='debug')
+    def _check_for_winner(self) -> bool:
         """Checks win conditions: lore count and decking out."""
+        # Check lore win condition
         for player_id, player in self.players.items():
             if player.lore >= 20:
                 self.winner = player_id
-                return
+                logger.info(f"Player {player_id} has reached 20 lore and won the game!")
+                return True
+        # Check deck-out win condition
+        for player_id, player in self.players.items():
             if player.deck.is_empty() and not any(card.location == 'hand' for card in player.hand):
                 # This is a simplified deck-out rule. A more accurate one might be needed.
                 self.winner = self.get_opponent(player_id).player_id
-                return
+                return True
+        return False
 
     def _ready_phase(self):
         """Start of turn: Ready all cards for the current player."""
@@ -471,7 +522,7 @@ class GameState:
         for card in player.play_area:
             if card.card_type == 'Location' and card.lore > 0:
                 player.lore += card.lore
-                print(f"{player.player_id} gained {card.lore} lore from {card.name}")
+                logger.debug(f"Player {player.player_id} gained {card.lore} lore from {card.name}")
         
         # Add any 'at_start_of_turn' triggered abilities to The Bag
         for player_id in [self.current_player_id, self.get_opponent(self.current_player_id).player_id]:
@@ -587,26 +638,37 @@ class GameState:
         if self.current_player_id == self.initial_player_id:
             self.turn_number += 1
 
+    @safe_operation(log_level='error')
     def run_game(self, max_turns=100) -> Optional[Player]:
         """Runs the game loop until a winner is found or max turns are reached."""
+        logger.debug(f"Starting game with max_turns={max_turns}")
         self.players[1].draw_initial_hand()
         self.players[2].draw_initial_hand()
 
         while self.winner is None and self.turn_number <= max_turns:
+            logger.debug(f"Turn {self.turn_number}: Player {self.current_player_id}'s turn")
             self.run_turn()
             self.end_turn()
 
+        logger.debug(f"Game ended on turn {self.turn_number}")
+        
         if self.winner is not None:
+            logger.info(f"Player {self.winner} wins!")
             return self.get_player(self.winner)
 
         # If no winner after max_turns, decide by lore count
         player1_lore = self.players[1].lore
         player2_lore = self.players[2].lore
+        logger.debug(f"No winner after {max_turns} turns. Lore count: Player 1 ({player1_lore}) vs Player 2 ({player2_lore})")
+        
         if player1_lore > player2_lore:
+            logger.info("Player 1 wins by lore count!")
             return self.players[1]
         elif player2_lore > player1_lore:
+            logger.info("Player 2 wins by lore count!")
             return self.players[2]
         else:
+            logger.info("Game ended in a draw!")
             return None # Draw
         if bodyguard_targets:
             return bodyguard_targets

@@ -424,6 +424,11 @@ def get_possible_actions(game: 'GameState', player: 'Player', has_inked: bool) -
 
     return actions
 
+from src.utils.logger import get_logger
+
+# Get the logger instance
+logger = get_logger()
+
 MAX_ACTIONS_PER_TURN = 30  # Safety break to prevent infinite loops in AI
 
 def run_main_phase(game: 'GameState', player: 'Player'):
@@ -437,30 +442,30 @@ def run_main_phase(game: 'GameState', player: 'Player'):
     actions_taken_count = 0
 
     while actions_taken_count < MAX_ACTIONS_PER_TURN:
-        print(f"DEBUG: Turn {game.turn_number}, Player {player.player_id} - Before get_possible_actions")
+        logger.debug(f"Turn {game.turn_number}, Player {player.player_id} - Before get_possible_actions")
         possible_actions = get_possible_actions(game, player, has_inked_this_turn)
-        print(f"DEBUG: Turn {game.turn_number}, Player {player.player_id} - After get_possible_actions")
+        logger.debug(f"Turn {game.turn_number}, Player {player.player_id} - After get_possible_actions")
         
-        # Print all possible actions for debugging
-        print(f"DEBUG: All possible actions: {[repr(a) for a in possible_actions]}")
+        # Log all possible actions at debug level
+        logger.debug(f"All possible actions: {[repr(a) for a in possible_actions]}")
         
         # Filter out actions that have already been taken this turn to prevent infinite loops
         possible_actions = [action for action in possible_actions if repr(action) not in executed_actions_this_turn]
         
         if not possible_actions:
-            print("DEBUG: No more possible actions, breaking")
+            logger.debug("No more possible actions, breaking")
             break  # No more actions to take
 
         # Use advanced heuristics for action evaluation
         evaluate_actions(possible_actions, game, player)
 
-        # Print scores for debugging
+        # Log scores at debug level
         for action in possible_actions:
-            print(f"DEBUG: Action {repr(action)} has score {action.score}")
+            logger.debug(f"Action {repr(action)} has score {action.score}")
             
         possible_actions.sort(key=lambda a: a.score, reverse=True)
         best_action = possible_actions[0]
-        print(f"DEBUG: Selected best action: {repr(best_action)} with score {best_action.score}")
+        logger.debug(f"Selected best action: {repr(best_action)} with score {best_action.score}")
 
         # Check if the best action is a challenge with a reckless character
         is_reckless_challenge = isinstance(best_action, ChallengeAction) and best_action.attacker.has_keyword('Reckless')
@@ -473,9 +478,9 @@ def run_main_phase(game: 'GameState', player: 'Player'):
         if best_action.score <= 0 and not (isinstance(best_action, InkAction) or is_reckless_challenge):
             # If we haven't done anything yet this turn, do at least one action even if it has a negative score
             if actions_taken_count == 0:
-                print(f"DEBUG: Taking one action despite negative score: {repr(best_action)} with score {best_action.score}")
+                logger.debug(f"Taking one action despite negative score: {repr(best_action)} with score {best_action.score}")
             else:
-                print(f"DEBUG: Stopping because best action {repr(best_action)} has non-positive score {best_action.score}")
+                logger.debug(f"Stopping because best action {repr(best_action)} has non-positive score {best_action.score}")
                 break
 
         # Execute the best action

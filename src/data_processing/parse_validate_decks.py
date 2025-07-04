@@ -1,6 +1,10 @@
 import pandas as pd
 import re
 import sys
+from src.utils.logger import get_logger
+
+# Get the logger instance
+logger = get_logger()
 
 def parse_and_validate_decks(master_dataset_path: str, decklist_path: str, output_path: str) -> pd.DataFrame:
     """
@@ -77,12 +81,12 @@ if __name__ == "__main__":
     DECKLIST = 'data/raw/2025.07.01-meta-decks.md'
     OUTPUT_CSV = 'data/processed/lorcana_metagame_decks.csv'
 
-    print("Starting decklist parsing and validation...")
+    logger.info("Starting decklist parsing and validation...")
     try:
         validated_df = parse_and_validate_decks(MASTER_DATASET, DECKLIST, OUTPUT_CSV)
-        print(f"VALIDATION SUCCESSFUL. Parsed and validated {len(validated_df)} card entries.")
-        print(f"Validated deck data saved to '{OUTPUT_CSV}'.")
+        logger.info(f"VALIDATION SUCCESSFUL. Parsed and validated {len(validated_df)} card entries.")
+        logger.info(f"Validated deck data saved to '{OUTPUT_CSV}'.")
     except (FileNotFoundError, ValueError, RuntimeError) as e:
-        print(f"An error occurred: {e}")
+        logger.error(f"An error occurred: {e}")
         sys.exit(1)
 

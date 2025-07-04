@@ -100,7 +100,7 @@ This document outlines the remaining tasks required to bring Project Oracle to f
   - [ ] Consolidate and reduce code duplication.
   - [ ] Standardize error handling patterns.
   - [ ] Ensure consistent naming conventions.
-  - [ ] Optimize simulation performance for MacBook Air M4 target
-  - [ ] Implement parallel processing for fitness calculations where possible
-  - [ ] Profile and optimize the most time-consuming operations
-  - [ ] Add a configuration option to adjust simulation depth vs. speed tradeoffs
+  - [x] Optimize simulation performance for MacBook Air M4 target
+  - [x] Implement parallel processing for fitness calculations where possible
+  - [x] Profile and optimize the most time-consuming operations
+  - [x] Add a configuration option to adjust simulation depth vs. speed tradeoffs

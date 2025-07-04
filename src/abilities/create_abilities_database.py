@@ -2,6 +2,12 @@ import pandas as pd
 import json
 import re
 from typing import List, Dict, Optional, Any
+import pandas as pd
+import os
+from src.utils.logger import get_logger
+
+# Get the logger instance
+logger = get_logger()
 
 # --- Data Structures ---
 
@@ -331,17 +337,17 @@ def create_abilities_database():
     master_dataset_path = 'data/processed/lorcana_card_master_dataset.csv'
     output_json_path = 'data/processed/lorcana_abilities_master.json'
     
-    print(f"Loading master dataset from '{master_dataset_path}'...")
+    logger.info(f"Loading master dataset from '{master_dataset_path}'...")
     try:
         df = pd.read_csv(master_dataset_path)
     except FileNotFoundError:
-        print(f"Error: Master dataset '{master_dataset_path}' not found.")
+        logger.error(f"Master dataset '{master_dataset_path}' not found.")
         return
 
     all_card_profiles: List[CardProfile] = []
     parsed_count = 0
 
-    print("Parsing abilities for all cards with new full-spectrum parser...")
+    logger.info("Parsing abilities for all cards with new full-spectrum parser...")
     for _, row in df.iterrows():
         raw_body_text = row['Body_Text'] if pd.notna(row['Body_Text']) else ""
         
@@ -358,16 +364,16 @@ def create_abilities_database():
         
         all_card_profiles.append(profile)
 
-    print(f"Successfully parsed abilities for {parsed_count} out of {len(df)} cards.")
+    logger.info(f"Successfully parsed abilities for {parsed_count} out of {len(df)} cards.")
 
     output_data = [profile.to_dict() for profile in all_card_profiles]
 
-    print(f"Saving structured abilities database to '{output_json_path}'...")
+    logger.info(f"Saving structured abilities database to '{output_json_path}'...")
     with open(output_json_path, 'w', encoding='utf-8') as f:
         json.dump(output_data, f, indent=4, ensure_ascii=False)
 
-    print("\nTask 2.8 is complete.")
-    print(f"Created '{output_json_path}' with new structured ability data.")
+    logger.info("\nTask 2.8 is complete.")
+    logger.info(f"Created '{output_json_path}' with new structured ability data.")
 
 if __name__ == "__main__":
     create_abilities_database()
