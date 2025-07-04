@@ -1,9 +1,25 @@
 import unittest
 import os
+import pandas as pd
 from src.evolution import FitnessCalculator
 from src.deck_generator import DeckGenerator
 
 class TestFitnessCalculator(unittest.TestCase):
+    def test_initialization_with_csv_meta_decks(self):
+        """Tests that the FitnessCalculator can be initialized with decks from the CSV."""
+        meta_decks_path = 'data/processed/lorcana_metagame_decks.csv'
+        self.assertTrue(os.path.exists(meta_decks_path), f"Meta decks CSV not found at {meta_decks_path}")
+        
+        meta_decks_df = pd.read_csv(meta_decks_path)
+        meta_decks_list = meta_decks_df.groupby('Deck_Name')['Card_Name'].apply(list).tolist()
+        
+        try:
+            calculator = FitnessCalculator(meta_decks=meta_decks_list, deck_generator=self.deck_generator)
+            self.assertIsNotNone(calculator)
+            self.assertEqual(len(calculator.meta_decks), len(meta_decks_list))
+        except Exception as e:
+            self.fail(f"FitnessCalculator initialization failed with CSV meta decks: {e}")
+
     @classmethod
     def setUpClass(cls):
         """Set up for the tests, run once per class."""
@@ -27,7 +43,7 @@ class TestFitnessCalculator(unittest.TestCase):
     def test_calculate_fitness_win_rate(self):
         """Tests that calculate_fitness correctly computes the win rate."""
         # We can't know the exact win rate, but we can check if it's a valid float between 0 and 1.
-        fitness = self.calculator.calculate_fitness(self.candidate_deck, games_per_matchup=2)
+        fitness, _ = self.calculator.calculate_fitness(self.candidate_deck)
         self.assertIsInstance(fitness, float)
         self.assertGreaterEqual(fitness, 0.0)
         self.assertLessEqual(fitness, 1.0)
@@ -35,7 +51,7 @@ class TestFitnessCalculator(unittest.TestCase):
     def test_calculate_fitness_no_meta_decks(self):
         """Tests that fitness is 0 if there are no meta decks."""
         calculator = FitnessCalculator(meta_decks=[], deck_generator=self.deck_generator)
-        fitness = calculator.calculate_fitness(self.candidate_deck)
+        fitness, _ = calculator.calculate_fitness(self.candidate_deck)
         self.assertEqual(fitness, 0.0)
 
     def test_simulate_game(self):

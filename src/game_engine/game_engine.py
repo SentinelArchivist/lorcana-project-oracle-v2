@@ -1,8 +1,13 @@
 import random
-from typing import List, Dict, Optional, Any
+import json
+from typing import List, Dict, Optional, Any, TYPE_CHECKING
+import pandas as pd
 
 from . import player_logic
-from src.abilities.create_abilities_database import ParsedAbility
+from .effect_resolver import EffectResolver
+
+if TYPE_CHECKING:
+    from .game_engine import GameState
 
 class Card:
     """Represents a single instance of a card within a game."""
@@ -13,36 +18,32 @@ class Card:
         self.inkable = card_data.get('Inkable', False)
         self.lore = card_data.get('Lore', 0)
         self.card_type = card_data.get('Type', 'Character') # Character, Action, Item
-        # Robustly handle Keywords data
         keywords_data = card_data.get('Keywords')
         if isinstance(keywords_data, str):
-            self.keywords = [kw.strip() for kw in keywords_data.split(',')]
+            self.keywords = {kw.strip() for kw in keywords_data.split(',')}
         elif isinstance(keywords_data, list):
-            self.keywords = keywords_data
+            self.keywords = set(keywords_data)
         else:
-            self.keywords = []  # Handles NaN, None, etc.
+            self.keywords = set()
 
-        # Robustly handle Abilities data
-        abilities_data = card_data.get('Abilities')
-        if isinstance(abilities_data, str):
+        schema_abilities_data = card_data.get('schema_abilities', '[]')
+        self.abilities: List[Dict[str, Any]] = []
+        if isinstance(schema_abilities_data, str):
             try:
-                abilities_data = eval(abilities_data)
-            except (SyntaxError, NameError):
-                abilities_data = []
-        
-        if not isinstance(abilities_data, list):
-            abilities_data = []
-
-        self.abilities = [ParsedAbility(**ability) for ability in abilities_data]
+                self.abilities = json.loads(schema_abilities_data)
+            except json.JSONDecodeError:
+                self.abilities = []
+        elif isinstance(schema_abilities_data, list):
+            self.abilities = schema_abilities_data
         self.owner_player_id = owner_player_id
         self.is_exerted = False
         self.damage_counters = 0
         self.location = 'deck'
-        self.turn_played: Optional[int] = None # For "ink drying" rule
+        self.turn_played: Optional[int] = None
         self._base_strength: Optional[int] = card_data.get('Strength')
         self.willpower: Optional[int] = card_data.get('Willpower')
-        self.strength_modifiers: List[Dict[str, Any]] = []  # e.g., [{'value': 2, 'duration': 'start_of_next_turn'}]
-        self.keyword_modifiers: List[Dict[str, Any]] = []  # e.g., [{'keyword': 'Evasive', 'duration': 'start_of_turn'}]
+        self.strength_modifiers: List[Dict[str, Any]] = []
+        self.keyword_modifiers: List[Dict[str, Any]] = []
 
     def __repr__(self) -> str:
         return f"Card({self.name})"
@@ -55,7 +56,6 @@ class Card:
     def strength(self) -> Optional[int]:
         if self._base_strength is None:
             return None
-        
         total_strength = self._base_strength
         for modifier in self.strength_modifiers:
             total_strength += modifier.get('value', 0)
@@ -63,44 +63,31 @@ class Card:
 
     def has_keyword(self, keyword: str) -> bool:
         """Checks if a card has a specific keyword ability, including temporary ones."""
-        # Check for inherent keywords from the 'Keywords' list
-        for kw in self.keywords:
-            if kw.lower().startswith(keyword.lower()):
-                return True
-
-        # Check for keywords granted by abilities (e.g. from a parsed ability text)
+        if any(kw.lower().startswith(keyword.lower()) for kw in self.keywords):
+            return True
         for ability in self.abilities:
-            if isinstance(ability.value, dict) and ability.value.get('keyword') == keyword:
+            if isinstance(ability.get('value'), dict) and ability['value'].get('keyword') == keyword:
                 return True
-        
-        # Check for temporary keywords from modifiers
         for modifier in self.keyword_modifiers:
             if modifier.get('keyword') == keyword:
                 return True
-
         return False
 
     def get_keyword_value(self, keyword: str) -> Optional[int]:
         """Get the numeric value associated with a keyword (e.g., Challenger +X, Shift X)."""
-        # Check for inherent keywords from the 'Keywords' list
         for kw_string in self.keywords:
             if kw_string.lower().startswith(keyword.lower()):
                 parts = kw_string.split()
                 if len(parts) > 1:
                     try:
-                        # Attempt to parse the last part as an integer
                         return int(parts[-1])
                     except (ValueError, IndexError):
-                        continue  # Not a numeric value, or no value present
-
-        # Check for keywords granted by abilities (e.g. from a parsed ability text)
+                        continue
         for ability in self.abilities:
-            if isinstance(ability.value, dict) and ability.value.get('keyword', '').lower() == keyword.lower():
-                value = ability.value.get('amount')
+            if isinstance(ability.get('value'), dict) and ability['value'].get('keyword', '').lower() == keyword.lower():
+                value = ability['value'].get('amount')
                 if isinstance(value, int):
                     return value
-
-        # Check for temporary keywords from modifiers
         for modifier in self.keyword_modifiers:
             kw_string = modifier.get('keyword', '')
             if kw_string.lower().startswith(keyword.lower()):
@@ -110,7 +97,6 @@ class Card:
                         return int(parts[-1])
                     except (ValueError, IndexError):
                         continue
-
         return None
 
     def take_damage(self, amount: int):
@@ -135,16 +121,43 @@ class Deck:
 
 class Player:
     """Represents a player in the game, including their actions."""
-    def __init__(self, player_id: int, deck: Deck):
+    def __init__(self, player_id: int, initial_deck: Optional[Deck] = None, deck_list: Optional[List[str]] = None, card_data: Optional[pd.DataFrame] = None):
+        """
+        Initializes a Player.
+
+        Can be initialized in two ways:
+        1. With a pre-made Deck object.
+        2. With a list of card names and a pandas DataFrame containing all card data.
+        """
         self.player_id = player_id
-        self.deck = deck
+        
+        if initial_deck is not None:
+            self.deck = initial_deck
+        elif deck_list is not None and card_data is not None:
+            card_objects = []
+            for card_name in deck_list:
+                # Find all rows that match the card name
+                card_data_rows = card_data[card_data['Name'] == card_name]
+                if not card_data_rows.empty:
+                    # Use the first match
+                    card_info = card_data_rows.iloc[0].to_dict()
+                    card_objects.append(Card(card_info, owner_player_id=self.player_id))
+                else:
+                    print(f"Warning: Card '{card_name}' not found in dataset. Skipping.")
+            self.deck = Deck(card_objects)
+        else:
+            # If no deck information is provided, initialize with an empty deck.
+            # This is useful for testing purposes.
+            self.deck = Deck([])
+
         self.hand: List[Card] = []
         self.inkwell: List[Card] = []
         self.play_area: List[Card] = []
-        self.locations: List[Card] = []
         self.discard_pile: List[Card] = []
+        self.locations: List[Card] = []  # Added missing locations attribute
         self.lore = 0
         self.has_inked_this_turn = False
+
         self.temporary_strength_mods: Dict[str, int] = {}
 
     def draw_cards(self, num_cards: int):
@@ -169,36 +182,27 @@ class Player:
         for card in self.play_area:
             card.is_exerted = False
 
-
     def _can_character_act(self, character: Card, game_turn: int) -> bool:
         """Checks if a character can perform an action (ink is 'dry')."""
         if character.is_exerted:
             return False
-
-        # Characters with Rush ignore summoning sickness
         if character.has_keyword('Rush'):
             return True
-
-        # Standard summoning sickness rule
-        if character.turn_played == game_turn:
-            return False
-
-        return True
+        # A character's ink is 'wet' on the turn it is played
+        return character.turn_played is None or character.turn_played < game_turn
 
     def ink_card(self, card: Card) -> bool:
         """Moves a card from hand to inkwell. Returns True on success."""
         if self.has_inked_this_turn:
-            # Already inked a card this turn
             return False
         if not card.inkable:
             return False
         if card not in self.hand:
             raise ValueError("Card to be inked is not in the player's hand.")
-
         self.hand.remove(card)
         self.inkwell.append(card)
         card.location = 'inkwell'
-        card.is_exerted = True  # Inking a card exerts it for the turn
+        card.is_exerted = True
         self.has_inked_this_turn = True
         return True
 
@@ -206,7 +210,6 @@ class Player:
         """Exerts a specified number of ready ink cards."""
         if self.get_available_ink() < amount:
             raise ValueError(f"Not enough available ink. Have {self.get_available_ink()}, need {amount}")
-
         ink_to_exert = amount
         for ink_card in self.inkwell:
             if not ink_card.is_exerted and ink_to_exert > 0:
@@ -217,11 +220,10 @@ class Player:
         """Returns a list of characters in play that the given card can be shifted onto."""
         if not card.has_keyword('Shift'):
             return []
-
         card_base_name = card.get_base_name()
         return [char for char in self.play_area if char.card_type == 'Character' and char.get_base_name() == card_base_name]
 
-    def play_card(self, card: 'Card', game: 'GameState', shift_target: Optional['Card'] = None):
+    def play_card(self, card: 'Card', game: 'GameState', shift_target: Optional['Card'] = None, chosen_targets: Optional[List['Card']] = None):
         """Plays a card from hand, handling normal, item, action, and shift plays."""
         if card not in self.hand:
             raise ValueError(f"Card {card.name} not in hand.")
@@ -242,43 +244,32 @@ class Player:
         if shift_target:
             if shift_target not in self.play_area:
                 raise ValueError(f"Shift target {shift_target.name} is not in play.")
-            # Transfer state from the old character to the new one
             card.is_exerted = shift_target.is_exerted
             card.damage_counters = shift_target.damage_counters
             card.strength_modifiers = list(shift_target.strength_modifiers)
             card.keyword_modifiers = list(shift_target.keyword_modifiers)
-            card.turn_played = shift_target.turn_played  # It's considered to have been in play
-
-            # The old card is effectively replaced and goes to the discard pile
+            card.turn_played = shift_target.turn_played
             self.play_area.remove(shift_target)
             self.discard_pile.append(shift_target)
             shift_target.location = 'discard'
-
             card.location = 'play_area'
             self.play_area.append(card)
-
-        elif card.card_type == 'Character' or card.card_type == 'Item':
+        elif card.card_type in ['Character', 'Item']:
             card.location = 'play_area'
+            self.play_area.append(card)
             card.turn_played = game.turn_number
-            self.play_area.append(card)
-
         elif card.card_type == 'Location':
             card.location = 'play_area'
             self.locations.append(card)
-
-        elif card.card_type == 'Action' or card.card_type == 'Song':
+        elif card.card_type in ['Action', 'Song']:
             card.location = 'discard'
             self.discard_pile.append(card)
 
         # Resolve OnPlay abilities
         for ability in card.abilities:
-            if ability.trigger.get('primary_trigger') == 'OnPlay':
-                game.effect_resolver.resolve_effect(
-                    ability,
-                    source_card=card,
-                    source_player=self,
-                    chosen_targets=None  # OnPlay effects typically don't have pre-chosen targets
-                )
+            trigger = ability.get('trigger')
+            if trigger == 'ON_PLAY':
+                game.effect_resolver.resolve_effect(effect_schema=ability, source_card=card, chosen_targets=chosen_targets)
 
     def sing_song(self, song_card: Card, singer: Card, game_turn: int) -> bool:
         """Plays a song by exerting a character. Returns True on success."""
@@ -289,7 +280,6 @@ class Player:
             self._can_character_act(singer, game_turn) and
             singer_ability_cost is not None and
             song_card.cost <= singer_ability_cost):
-            
             singer.is_exerted = True
             self.hand.remove(song_card)
             song_card.location = 'discard'
@@ -306,13 +296,10 @@ class Player:
         if character in self.play_area and self._can_character_act(character, game_turn):
             character.is_exerted = True
             self.lore += character.lore
-
-            # Handle Support keyword
             if character.has_keyword('Support') and support_target:
                 if support_target in self.play_area and support_target != character:
                     support_value = character.strength or 0
                     self.temporary_strength_mods[support_target.unique_id] = self.temporary_strength_mods.get(support_target.unique_id, 0) + support_value
-
             return True
         return False
 
@@ -327,60 +314,40 @@ class Player:
         """Moves a character from play. If it has Vanish, it returns to hand; otherwise, to discard."""
         if character in self.play_area:
             self.play_area.remove(character)
-
             if character.has_keyword('Vanish'):
                 character.location = 'hand'
-                character.damage_counters = 0  # Reset damage
+                character.damage_counters = 0
                 self.hand.append(character)
             else:
                 character.location = 'discard'
                 self.discard_pile.append(character)
 
-    def activate_ability(self, card: Card, ability_index: int, game_turn: int) -> bool:
+    def activate_ability(self, card: Card, ability_index: int, game: 'GameState') -> bool:
         """Activates a card's ability. Returns True on success."""
         if not (card in self.play_area and not card.is_exerted):
             return False
-
         if not (0 <= ability_index < len(card.abilities)):
-            return False  # Invalid ability index
-
+            return False
         ability = card.abilities[ability_index]
-        if ability.trigger != "Activated":
-            return False  # Not an activated ability
-
-        # For now, assume the only cost is exerting the character.
-        # This will be expanded later to handle ink costs, etc.
+        if ability.get('trigger', {}).get('type') != "ACTIVATED":
+            return False
         card.is_exerted = True
-
-        # --- Execute the effect ---
-        self.game.effect_resolver.resolve_effect(
-            ability,
-            source_card=card,
-            source_player=self,
-            chosen_targets=None  # Activated abilities might need targets later
-        )
+        game.effect_resolver.resolve_effect(ability, source_card=card, chosen_targets=None)
         return True
 
     def get_valid_challenge_targets(self, challenger: Card, opponent: 'Player') -> list[Card]:
         """Returns a list of valid characters the given character can challenge."""
-        # Bodyguard rule: If a character with Bodyguard is exerted, they must be challenged first.
         bodyguard_targets = [char for char in opponent.play_area if char.is_exerted and char.has_keyword('Bodyguard')]
         if bodyguard_targets:
             return bodyguard_targets
-
         valid_targets = []
         challenger_has_evasive = challenger.has_keyword('Evasive')
-
         for target in opponent.play_area:
             if not target.is_exerted:
-                continue  # Can only challenge exerted characters
-
-            # Evasive rule: Evasive characters can only be challenged by other Evasive characters.
+                continue
             if target.has_keyword('Evasive') and not challenger_has_evasive:
                 continue
-
             valid_targets.append(target)
-
         return valid_targets
 
     def get_valid_effect_targets(self, opponent: 'Player') -> list[Card]:
@@ -391,10 +358,155 @@ class Player:
         """Checks if the player can afford to play a card normally."""
         return self.get_available_ink() >= card.cost
 
-    def get_valid_challenge_targets(self, challenger: 'Card', opponent: 'Player') -> List['Card']:
-        """Returns a list of valid characters the challenger can challenge."""
-        # Bodyguard rule: If a character with Bodyguard is exerted, they must be challenged first.
-        bodyguard_targets = [char for char in opponent.play_area if char.is_exerted and char.has_keyword('Bodyguard')]
+class GameState:
+    """Manages the entire state and flow of a Lorcana game."""
+    def __init__(self, player1: Player, player2: Player):
+        self.players = {
+            1: player1,
+            2: player2
+        }
+        self.players[1].game = self
+        self.players[2].game = self
+        self.turn_number = 1
+        self.current_player_id = 1
+        self.initial_player_id = 1
+        self.winner: Optional[int] = None
+        self.effect_resolver = EffectResolver(game=self, card_class=Card, player_class=Player)
+
+    def get_player(self, player_id: int) -> Player:
+        """Gets a player by their ID."""
+        return self.players[player_id]
+
+    def get_opponent(self, player_id: int) -> Player:
+        """Gets the opponent of a given player."""
+        return self.players[2 if player_id == 1 else 1]
+
+    def _check_for_winner(self):
+        """Checks win conditions: lore count and decking out."""
+        for player_id, player in self.players.items():
+            if player.lore >= 20:
+                self.winner = player_id
+                return
+            if player.deck.is_empty() and not any(card.location == 'hand' for card in player.hand):
+                # This is a simplified deck-out rule. A more accurate one might be needed.
+                self.winner = self.get_opponent(player_id).player_id
+                return
+
+    def _ready_phase(self):
+        """Start of turn: Ready all cards for the current player."""
+        player = self.get_player(self.current_player_id)
+        player.ready_cards()
+        # Here you would also handle 'start of turn' effects
+
+    def _set_phase(self):
+        """Start of turn: Check for and trigger any start-of-turn abilities."""
+        # Placeholder for start-of-turn triggered abilities
+        pass
+
+    def _draw_phase(self):
+        """Current player draws a card."""
+        player = self.get_player(self.current_player_id)
+        if self.turn_number == 1 and self.current_player_id == self.initial_player_id:
+            return  # First player skips their first draw
+
+        if player.deck.is_empty():
+            self.winner = self.get_opponent(self.current_player_id).player_id
+            return
+
+        player.draw_cards(1)
+        self._check_for_winner() # Check for deck-out loss
+
+    def challenge(self, challenger: Card, target: Card) -> bool:
+        """Resolves a challenge between two characters."""
+        challenger_player = self.get_player(challenger.owner_player_id)
+        target_player = self.get_player(target.owner_player_id)
+
+        if not challenger_player._can_character_act(challenger, self.turn_number):
+            raise ValueError(f"{challenger.name} cannot act this turn.")
+        if target not in challenger_player.get_valid_challenge_targets(challenger, target_player):
+            raise ValueError(f"{target.name} is not a valid challenge target for {challenger.name}.")
+
+        challenger.is_exerted = True
+
+        # Calculate effective strength for the challenge
+        challenger_strength = challenger.strength or 0
+        challenger_strength += challenger_player.temporary_strength_mods.get(challenger.unique_id, 0)
+
+        target_strength = target.strength or 0
+
+        # Challenger keyword bonus
+        challenger_bonus = challenger.get_keyword_value('Challenger')
+        if challenger_bonus:
+            challenger_strength += challenger_bonus
+
+        # Resist keyword reduction
+        resist_value = target.get_keyword_value('Resist')
+        if resist_value:
+            challenger_strength = max(0, challenger_strength - resist_value)
+
+        # Deal damage
+        if target_strength > 0:
+            challenger.take_damage(target_strength)
+        if challenger_strength > 0:
+            target.take_damage(challenger_strength)
+
+        # Check for banishment
+        if challenger.willpower is not None and challenger.damage_counters >= challenger.willpower:
+            challenger_player.banish_character(challenger)
+        if target.willpower is not None and target.damage_counters >= target.willpower:
+            target_player.banish_character(target)
+
+        return True
+
+    def run_turn(self):
+        """Executes a single full turn for the current player."""
+        if self.winner: return
+        self._check_for_winner()
+        if self.winner: return
+
+        self._ready_phase()
+        self._set_phase()
+        self._draw_phase()
+        if self.winner: return
+
+        player = self.get_player(self.current_player_id)
+        player_logic.run_main_phase(self, player)
+
+        self._check_for_winner()
+
+    def end_turn(self):
+        """Ends the current turn and passes to the next player."""
+        if self.winner: return
+
+        current_player = self.get_player(self.current_player_id)
+        current_player.clear_temporary_mods()
+        current_player.has_inked_this_turn = False
+
+        self.current_player_id = self.get_opponent(self.current_player_id).player_id
+        if self.current_player_id == self.initial_player_id:
+            self.turn_number += 1
+
+    def run_game(self, max_turns=100) -> Optional[Player]:
+        """Runs the game loop until a winner is found or max turns are reached."""
+        self.players[1].draw_initial_hand()
+        self.players[2].draw_initial_hand()
+
+        while self.winner is None and self.turn_number <= max_turns:
+            self.run_turn()
+            self.end_turn()
+
+        if self.winner is not None:
+            return self.get_player(self.winner)
+
+        # If no winner after max_turns, decide by lore count
+        player1_lore = self.players[1].lore
+        player2_lore = self.players[2].lore
+        if player1_lore > player2_lore:
+            return self.players[1]
+        elif player2_lore > player1_lore:
+            return self.players[2]
+        else:
+            return None # Draw
         if bodyguard_targets:
             return bodyguard_targets
 
@@ -414,193 +526,3 @@ class Player:
                 valid_targets.append(target)
 
         return valid_targets
-
-
-
-class GameState:
-    """Manages the entire state of a game, including players, turn, and phase."""
-
-    def __init__(self, player1: Player, player2: Player):
-        """Initializes the game state.
-
-        Args:
-            player1: The first player.
-            player2: The second player.
-        """
-        self.players = [player1, player2]
-        self.turn = 1
-        self.current_player_index = 0  # Player 1 starts
-
-    @property
-    def current_player(self) -> Player:
-        """Returns the player whose turn it is."""
-        return self.players[self.current_player_index]
-
-    def start_turn(self):
-        """Handles the beginning phase of a turn: readying cards and drawing."""
-        self.current_player.has_inked_this_turn = False
-        self.current_player.ready_cards()
-        self.current_player.draw_cards(1)
-
-    def end_turn(self):
-        """Advances to the next player's turn and starts their turn."""
-        self.current_player_index = (self.current_player_index + 1) % len(self.players)
-        if self.current_player_index == 0:
-            self.turn += 1
-        self.start_turn()
-
-
-class Game:
-    """The main container for the entire state of a single game."""
-    def __init__(self, player1: Player, player2: Player):
-        self.players: Dict[int, Player] = {player1.player_id: player1, player2.player_id: player2}
-        self.initial_player_id = player1.player_id
-        self.current_player_id = player1.player_id # Player 1 starts
-        self.turn_number = 1
-        self.winner: Optional[int] = None
-
-    def get_player(self, player_id: int) -> Player:
-        return self.players[player_id]
-
-    def get_opponent(self, player_id: int) -> Player:
-        return self.players[2 if player_id == 1 else 1]
-
-    def challenge(self, attacker: Card, defender: Card) -> bool:
-        """Executes a challenge between two characters. Returns True on success."""
-        attacker_player = self.get_player(attacker.owner_player_id)
-        defender_player = self.get_player(defender.owner_player_id)
-
-        if not attacker_player._can_character_act(attacker, self.turn_number):
-            return False
-        if not defender.is_exerted:
-            return False
-
-        # Bodyguard rule: if a bodyguard is available, it must be challenged.
-        if not defender.has_keyword('Bodyguard'):
-            bodyguards = [c for c in defender_player.play_area if c.is_exerted and c.has_keyword('Bodyguard')]
-            if bodyguards:
-                return False # Illegal move: a Bodyguard character should have been challenged.
-
-        attacker.is_exerted = True
-
-        # Calculate effective strength and damage, accounting for keywords
-        attacker_player = self.get_player(attacker.owner_player_id)
-        attacker_strength = (attacker.strength or 0) + attacker_player.temporary_strength_mods.get(attacker.unique_id, 0)
-        defender_strength = defender.strength or 0
-
-        challenger_bonus = attacker.get_keyword_value('Challenger')
-        if challenger_bonus:
-            attacker_strength += challenger_bonus
-
-        resist_value = defender.get_keyword_value('Resist')
-        damage_to_defender = attacker_strength
-        if resist_value:
-            damage_to_defender = max(0, damage_to_defender - resist_value)
-
-        # Deal damage
-        defender.take_damage(damage_to_defender)
-        attacker.take_damage(defender_strength)
-
-        # Check for banishment
-        if defender.willpower is not None and defender.damage_counters >= defender.willpower:
-            defender_player.banish_character(defender)
-
-        if attacker.willpower is not None and attacker.damage_counters >= attacker.willpower:
-            attacker_player.banish_character(attacker)
-            
-        return True
-
-    def _ready_phase(self):
-        player = self.get_player(self.current_player_id)
-
-        # 1. Ready all cards for the current player
-        for card in player.play_area + player.inkwell:
-            card.is_exerted = False
-
-        # 2. Clear expired temporary effects for all characters in play
-        for p in self.players.values():
-            for character in p.play_area:
-                if not hasattr(character, 'strength_modifiers'):
-                    continue
-                # Modifiers with a duration of 'start_of_turn' expire when that player's turn starts.
-                character.strength_modifiers = [
-                    mod for mod in character.strength_modifiers
-                    if not (mod.get('duration') == 'start_of_turn' and mod.get('player_id') == self.current_player_id)
-                ]
-
-                # Clear expired keyword modifiers
-                character.keyword_modifiers = [
-                    mod for mod in character.keyword_modifiers
-                    if not (mod.get('duration') == 'start_of_turn' and mod.get('player_id') == self.current_player_id)
-                ]
-
-    def _set_phase(self):
-        pass
-
-    def _draw_phase(self):
-        if self.turn_number == 1 and self.current_player_id == self.initial_player_id:
-            return
-        player = self.get_player(self.current_player_id)
-        if player.deck.is_empty():
-            self.winner = self.get_opponent(self.current_player_id).player_id
-            return
-        player.draw_cards(1)
-
-    def _check_win_conditions(self):
-        for player_id, player in self.players.items():
-            if player.lore >= 20:
-                self.winner = player_id
-                return
-
-    def run_turn(self):
-        if self.winner: return
-        self._check_win_conditions()
-        if self.winner: return
-        self._ready_phase()
-        self._set_phase()
-        self._draw_phase()
-        if self.winner: return
-
-        # Main Phase - AI Logic
-        player = self.get_player(self.current_player_id)
-        player_logic.run_main_phase(self, player)
-
-        self._check_win_conditions()
-
-    def end_turn(self):
-        if self.winner: return
-
-        # Clear temporary effects for the active player before the turn ends.
-        self.get_player(self.current_player_id).clear_temporary_mods()
-        self.current_player_id = self.get_opponent(self.current_player_id).player_id
-        if self.current_player_id == self.initial_player_id:
-            self.turn_number += 1
-
-    def run_game(self, max_turns=100) -> Optional[Player]:
-        """
-        Runs the entire game loop until a win condition is met or max turns are reached.
-        Returns the winning player object or None for a draw.
-        """
-        # Initial setup: both players draw their opening hand.
-        self.players[1].draw_initial_hand()
-        self.players[2].draw_initial_hand()
-        
-        while self.winner is None and self.turn_number <= max_turns:
-            self.run_turn()
-            self.end_turn()
-
-        # If a winner was determined by lore >= 20 or deck out
-        if self.winner is not None:
-            return self.get_player(self.winner)
-        
-        # If max turns are reached, determine winner by lore
-        player1_lore = self.players[1].lore
-        player2_lore = self.players[2].lore
-
-        if player1_lore > player2_lore:
-            return self.players[1]
-        elif player2_lore > player1_lore:
-            return self.players[2]
-        else:
-            # It's a draw
-            return None

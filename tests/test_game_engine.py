@@ -102,7 +102,7 @@ class TestPlayer(unittest.TestCase):
         """Set up a player with a mock deck for tests."""
         self.mock_cards = [Card({'Name': f'Card {i}', 'Cost': 1, 'Inkable': True, 'Type': 'Character', 'Strength': 1, 'Willpower': 1, 'Lore': 1}, owner_player_id=1) for i in range(10)]
         self.mock_deck = Deck(self.mock_cards[:])  # Pass a copy
-        self.player = Player(player_id=1, deck=self.mock_deck)
+        self.player = Player(player_id=1, initial_deck=self.mock_deck)
         self.player.draw_cards(7)
 
     def test_player_initialization(self):
@@ -197,23 +197,26 @@ class TestGameState(unittest.TestCase):
         deck1 = Deck(cards1)
         deck2 = Deck(cards2)
 
-        self.player1 = Player(deck=deck1, player_id=1)
-        self.player2 = Player(deck=deck2, player_id=2)
+        self.player1 = Player(initial_deck=deck1, player_id=1)
+        self.player2 = Player(initial_deck=deck2, player_id=2)
 
         # Draw starting hands
         self.player1.draw_cards(7)
         self.player2.draw_cards(7)
 
         self.game_state = GameState(self.player1, self.player2)
-        self.game_state.start_turn()  # Start player 1's first turn
+        # Manually step through the start of the turn phases
+        self.game_state._ready_phase()
+        self.game_state._set_phase()
+        self.game_state._draw_phase()
 
     def test_game_state_initialization(self):
         """Tests that the game state is initialized correctly."""
-        self.assertEqual(self.game_state.turn, 1)
-        self.assertIsNotNone(self.game_state.players[0])
+        self.assertEqual(self.game_state.turn_number, 1)
         self.assertIsNotNone(self.game_state.players[1])
-        self.assertEqual(self.game_state.current_player_index, 0)
-        self.assertEqual(self.game_state.current_player, self.game_state.players[0])
+        self.assertIsNotNone(self.game_state.players[2])
+        self.assertEqual(self.game_state.current_player_id, 1)
+        self.assertEqual(self.game_state.current_player_id, self.game_state.players[1].player_id)
 
     def test_end_turn(self):
         """Tests that the turn progression logic is correct."""
@@ -248,11 +251,21 @@ class TestGameState(unittest.TestCase):
 
         # Action: Progress to player 1's next turn
         self.game_state.end_turn()  # End of P1's turn 1
+
+        # Manually start P2's turn
+        self.game_state._ready_phase()
+        self.game_state._set_phase()
+        self.game_state._draw_phase()
         self.game_state.end_turn()  # End of P2's turn 1
 
+        # Manually start P1's second turn
+        self.game_state._ready_phase()
+        self.game_state._set_phase()
+        self.game_state._draw_phase()
+
         # Assert: Cards are readied and a card is drawn for P1 on turn 2
-        self.assertEqual(self.game_state.turn, 2)
-        self.assertEqual(self.game_state.current_player, self.player1)
+        self.assertEqual(self.game_state.turn_number, 2)
+        self.assertEqual(self.game_state.current_player_id, self.player1.player_id)
         self.assertEqual(self.player1.get_available_ink(), 1)  # Inked card is now ready
         self.assertFalse(char_card.is_exerted)  # Character is now ready
         self.assertEqual(len(self.player1.hand), initial_hand_size + 1)

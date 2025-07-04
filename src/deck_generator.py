@@ -1,12 +1,19 @@
 import pandas as pd
 import random
 import itertools
+import os
 
 class DeckGenerator:
     """Generates legal Lorcana decks based on a master card dataset."""
 
     def __init__(self, card_dataset_path: str = 'data/processed/lorcana_card_master_dataset.csv'):
         """Initializes the generator with the path to the card data."""
+        # If the default path is used, construct an absolute path to be robust
+        if card_dataset_path == 'data/processed/lorcana_card_master_dataset.csv':
+            script_dir = os.path.dirname(__file__)
+            project_root = os.path.abspath(os.path.join(script_dir, '..'))
+            card_dataset_path = os.path.join(project_root, 'data', 'processed', 'lorcana_card_master_dataset.csv')
+
         card_pool = pd.read_csv(card_dataset_path)
         card_pool = card_pool[card_pool['Set_Name'] != 'Lorcana TCG Quick Start Decks']
         self.card_df = card_pool

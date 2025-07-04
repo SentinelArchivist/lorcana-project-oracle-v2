@@ -77,16 +77,29 @@ class GeneticAlgorithm:
                     child_deck.append(gene)
                     card_counts[gene] = card_counts.get(gene, 0) + 1
             
-            valid_card_pool_list = list(valid_card_pool_ids)
+            # Fill the rest of the deck to ensure it has exactly 60 cards
             while len(child_deck) < 60:
-                if not valid_card_pool_list:
-                    break
-                new_card = random.choice(valid_card_pool_list)
-                if card_counts.get(new_card, 0) < 4:
+                if not valid_card_pool_ids:
+                    # Emergency fallback: if the pool is empty, pad with a card from a parent.
+                    child_deck.append(parent1[0])
+                    continue
+
+                # Prioritize cards that don't violate the 4-copy rule
+                available_cards = [card for card in valid_card_pool_ids if card_counts.get(card, 0) < 4]
+                
+                if available_cards:
+                    new_card = random.choice(available_cards)
                     child_deck.append(new_card)
                     card_counts[new_card] = card_counts.get(new_card, 0) + 1
+                else:
+                    # If all cards are at the 4-copy limit, we must violate the rule to fill the deck.
+                    new_card = random.choice(list(valid_card_pool_ids))
+                    child_deck.append(new_card)
             
-            offspring.append(np.array(child_deck))
+            # Ensure the deck is exactly 60 cards, truncating if necessary
+            final_deck = child_deck[:60]
+            
+            offspring.append(np.array(final_deck))
 
         return np.array(offspring)
 

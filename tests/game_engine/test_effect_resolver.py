@@ -3,7 +3,6 @@ from unittest.mock import Mock, MagicMock
 
 # Imports from the main source code
 from src.game_engine.game_engine import GameState, Player, Card
-from src.abilities.create_abilities_database import ParsedAbility
 from src.game_engine.effect_resolver import EffectResolver
 
 
@@ -15,37 +14,37 @@ class TestEffectResolver(unittest.TestCase):
         self.player1.player_id = 1
         self.player2 = Mock(spec=Player)
         self.player2.player_id = 2
-        self.game.players = [self.player1, self.player2]
+        self.game.players = {1: self.player1, 2: self.player2}
         self.player1.opponent = self.player2
         self.player2.opponent = self.player1
 
-        self.resolver = EffectResolver(self.game)
+        # Pass the Card and Player classes to the resolver
+        self.resolver = EffectResolver(self.game, Card, Player)
 
     def test_resolver_initialization(self):
         """Test that the EffectResolver initializes correctly."""
         self.assertIsNotNone(self.resolver)
         self.assertEqual(self.resolver.game, self.game)
+        self.assertEqual(self.resolver.Card, Card)
+        self.assertEqual(self.resolver.Player, Player)
 
     def test_resolve_deal_damage_calls_take_damage(self):
         """Test that resolving 'DealDamage' calls the take_damage method on the target."""
         # 1. Setup
         source_card = Mock(spec=Card)
         target_card = Mock(spec=Card)
-        target_card.take_damage = MagicMock()  # Mock the method we expect to be called
+        target_card.take_damage = MagicMock()
 
-        ability = ParsedAbility(
-            trigger={'type': 'OnPlay'},
-            effect='DealDamage',
-            target='ChosenCharacter',
-            value=3
-        )
+        schema_ability = {
+            "effect": "DealDamage",
+            "value": 3,
+            "target": "ChosenCharacter"
+        }
 
         # 2. Action
-        # We pass the chosen target directly to the resolver
-        self.resolver.resolve_ability(ability, source_card, chosen_targets=[target_card])
+        self.resolver.resolve_effect(schema_ability, source_card, chosen_targets=[target_card])
 
         # 3. Assert
-        # Check that the take_damage method was called on the target with the correct value
         target_card.take_damage.assert_called_once_with(3)
 
     def test_resolve_draw_card_calls_draw_cards(self):
@@ -57,21 +56,19 @@ class TestEffectResolver(unittest.TestCase):
         target_player = self.player1
         target_player.draw_cards = MagicMock()
 
-        ability = ParsedAbility(
-            trigger={'type': 'OnPlay'},
-            effect='DrawCard',
-            target='Self',  # 'Self' should resolve to the player who owns the source_card
-            value=2
-        )
+        schema_ability = {
+            "effect": "DrawCard",
+            "value": 2,
+            "target": "Self"
+        }
 
         # Mock the game state to return the correct player
         self.game.get_player = MagicMock(return_value=target_player)
 
         # 2. Action
-        self.resolver.resolve_ability(ability, source_card)
+        self.resolver.resolve_effect(schema_ability, source_card)
 
         # 3. Assert
-        # Check that the draw_cards method was called on the target player with the correct value
         self.game.get_player.assert_called_once_with(self.player1.player_id)
         target_player.draw_cards.assert_called_once_with(2)
 
@@ -80,14 +77,13 @@ class TestEffectResolver(unittest.TestCase):
         # 1. Setup
         source_card = Mock(spec=Card)
         source_card.owner_player_id = self.player1.player_id
+        effect_schema = {'target': 'Self'}
 
         # Mock the game state to return the correct player
         self.game.get_player = MagicMock(return_value=self.player1)
 
-        ability = Mock(spec=ParsedAbility)
-
         # 2. Action
-        targets = self.resolver._get_targets('Self', source_card, ability)
+        targets = self.resolver._get_targets(effect_schema, source_card)
 
         # 3. Assert
         self.game.get_player.assert_called_once_with(self.player1.player_id)
@@ -100,22 +96,17 @@ class TestEffectResolver(unittest.TestCase):
         target_card = Mock(spec=Card)
         target_card.owner_player_id = self.player2.player_id
 
-        # The player who owns the character to be banished
         owner_player = self.player2
         owner_player.banish_character = MagicMock()
-
-        ability = ParsedAbility(
-            trigger={'type': 'OnPlay'},
-            effect='Banish',
-            target='ChosenCharacter',
-            value=None
-        )
-
-        # Mock the game to return the correct owner
         self.game.get_player = MagicMock(return_value=owner_player)
 
+        schema_ability = {
+            "effect": "Banish",
+            "target": "ChosenCharacter"
+        }
+
         # 2. Action
-        self.resolver.resolve_ability(ability, source_card, chosen_targets=[target_card])
+        self.resolver.resolve_effect(schema_ability, source_card, chosen_targets=[target_card])
 
         # 3. Assert
         self.game.get_player.assert_called_once_with(self.player2.player_id)
@@ -127,25 +118,24 @@ class TestEffectResolver(unittest.TestCase):
         source_card = Mock(spec=Card)
         source_card.owner_player_id = self.player1.player_id
         target_card = Mock(spec=Card)
-        target_card.strength_modifiers = []  # Ensure it starts empty
+        target_card.strength_modifiers = []
 
-        ability = ParsedAbility(
-            trigger={'type': 'OnPlay'},
-            effect='GainStrength',
-            target='ChosenCharacter',
-            value=2,
-            duration='start_of_turn'  # e.g., until the start of your next turn
-        )
+        schema_ability = {
+            "effect": "GainStrength",
+            "value": 2,
+            "target": "ChosenCharacter",
+            "duration": "start_of_turn"
+        }
 
         # 2. Action
-        self.resolver.resolve_ability(ability, source_card, chosen_targets=[target_card])
+        self.resolver.resolve_effect(schema_ability, source_card, chosen_targets=[target_card])
 
         # 3. Assert
         self.assertEqual(len(target_card.strength_modifiers), 1)
         modifier = target_card.strength_modifiers[0]
-        self.assertEqual(modifier['value'], 2)
+        self.assertEqual(modifier['strength'], 2)
         self.assertEqual(modifier['duration'], 'start_of_turn')
-        self.assertIn('player_id', modifier)
+        self.assertEqual(modifier['player_id'], self.player1.player_id)
 
     def test_resolve_return_to_hand_calls_return_to_hand(self):
         """Test that resolving 'ReturnToHand' calls the return_to_hand method on the target's owner."""
@@ -156,18 +146,15 @@ class TestEffectResolver(unittest.TestCase):
 
         owner_player = self.player2
         owner_player.return_to_hand = MagicMock()
-
-        ability = ParsedAbility(
-            trigger={'type': 'OnPlay'},
-            effect='ReturnToHand',
-            target='ChosenCharacter',
-            value=None
-        )
-
         self.game.get_player = MagicMock(return_value=owner_player)
 
+        schema_ability = {
+            "effect": "ReturnToHand",
+            "target": "ChosenCharacter"
+        }
+
         # 2. Action
-        self.resolver.resolve_ability(ability, source_card, chosen_targets=[target_card])
+        self.resolver.resolve_effect(schema_ability, source_card, chosen_targets=[target_card])
 
         # 3. Assert
         self.game.get_player.assert_called_once_with(self.player2.player_id)
@@ -179,18 +166,17 @@ class TestEffectResolver(unittest.TestCase):
         source_card = Mock(spec=Card)
         source_card.owner_player_id = self.player1.player_id
         target_card = Mock(spec=Card)
-        target_card.keyword_modifiers = []  # Ensure it starts empty
+        target_card.keyword_modifiers = []
 
-        ability = ParsedAbility(
-            trigger={'type': 'OnPlay'},
-            effect='GainKeyword',
-            target='ChosenCharacter',
-            value='Evasive',
-            duration='start_of_turn'
-        )
+        schema_ability = {
+            "effect": "GainKeyword",
+            "value": "Evasive",
+            "target": "ChosenCharacter",
+            "duration": "start_of_turn"
+        }
 
         # 2. Action
-        self.resolver.resolve_ability(ability, source_card, chosen_targets=[target_card])
+        self.resolver.resolve_effect(schema_ability, source_card, chosen_targets=[target_card])
 
         # 3. Assert
         self.assertEqual(len(target_card.keyword_modifiers), 1)
@@ -198,6 +184,88 @@ class TestEffectResolver(unittest.TestCase):
         self.assertEqual(modifier['keyword'], 'Evasive')
         self.assertEqual(modifier['duration'], 'start_of_turn')
         self.assertEqual(modifier['player_id'], self.player1.player_id)
+
+    def test_resolve_add_keyword_effect(self):
+        """Test that resolving ADD_KEYWORD adds the keyword to the card's keyword set."""
+        # 1. Setup
+        source_card = Mock(spec=Card)
+        target_card = Mock(spec=Card)
+        target_card.keywords = set()
+
+        schema_ability = {
+            "effect": "ADD_KEYWORD",
+            "value": "Evasive",
+            "target": "ChosenCharacter"
+        }
+
+        # 2. Action
+        self.resolver.resolve_effect(schema_ability, source_card, chosen_targets=[target_card])
+
+        # 3. Assert
+        self.assertIn("Evasive", target_card.keywords)
+
+    def test_resolve_add_keyword_with_value_effect(self):
+        """Test ADD_KEYWORD for keywords with numeric values (e.g., Resist +1)."""
+        # 1. Setup
+        source_card = Mock(spec=Card)
+        target_card = Mock(spec=Card)
+        target_card.keywords = set()
+
+        schema_ability = {
+            "effect": "ADD_KEYWORD",
+            "value": "Resist +1",
+            "target": "ChosenCharacter"
+        }
+
+        # 2. Action
+        self.resolver.resolve_effect(schema_ability, source_card, chosen_targets=[target_card])
+
+        # 3. Assert
+        self.assertIn("Resist +1", target_card.keywords)
+
+    def test_resolve_set_shift_cost_effect(self):
+        """Test that SET_SHIFT_COST adds 'Shift X' to the card's keywords."""
+        # 1. Setup
+        source_card = Mock(spec=Card)
+        target_card = Mock(spec=Card)
+        target_card.keywords = set()
+
+        schema_ability = {
+            "effect": "SET_SHIFT_COST",
+            "value": 2,
+            "target": "Self"
+        }
+
+        self.resolver._get_targets = MagicMock(return_value=[target_card])
+
+        # 2. Action
+        self.resolver.resolve_effect(schema_ability, source_card)
+
+        # 3. Assert
+        self.assertIn("Shift 2", target_card.keywords)
+        self.resolver._get_targets.assert_called_once_with(schema_ability, source_card, None)
+
+    def test_resolve_singer_effect(self):
+        """Test that SINGER adds 'Singer X' to the card's keywords."""
+        # 1. Setup
+        source_card = Mock(spec=Card)
+        target_card = Mock(spec=Card)
+        target_card.keywords = set()
+
+        schema_ability = {
+            "effect": "SINGER",
+            "value": 4,
+            "target": "Self"
+        }
+
+        self.resolver._get_targets = MagicMock(return_value=[target_card])
+
+        # 2. Action
+        self.resolver.resolve_effect(schema_ability, source_card)
+
+        # 3. Assert
+        self.assertIn("Singer 4", target_card.keywords)
+        self.resolver._get_targets.assert_called_once_with(schema_ability, source_card, None)
 
 
 if __name__ == '__main__':

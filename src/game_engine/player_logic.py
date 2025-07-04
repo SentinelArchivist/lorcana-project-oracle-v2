@@ -103,10 +103,23 @@ def evaluate_actions(actions: List[Action], game: 'GameState', player: 'Player')
     for action in actions:
         if isinstance(action, QuestAction):
             # Base score is the lore gained.
-            action.score = action.character.lore or 0
+            score = action.character.lore or 0
             if action.character.has_keyword('Support'):
                 # Small bonus for using support
-                action.score += 0.5
+                score += 0.5
+
+            # Risk assessment: check if questing makes the character vulnerable to banishment.
+            opponent = game.get_opponent(player.player_id)
+            character_at_risk = action.character
+            for opponent_char in opponent.play_area:
+                # Can the opponent's character challenge ours?
+                if (opponent_char.strength or 0) >= (character_at_risk.willpower or 999) - character_at_risk.damage_counters:
+                    # If so, this is a risky move. Penalize it based on the value of our card.
+                    risk_penalty = (character_at_risk.strength or 0) + (character_at_risk.willpower or 0) + (character_at_risk.lore or 0)
+                    score -= risk_penalty
+                    break # One threat is enough to penalize the action
+
+            action.score = score
 
         elif isinstance(action, ChallengeAction):
             # Heuristic for evaluating a challenge trade.
@@ -142,6 +155,9 @@ def evaluate_actions(actions: List[Action], game: 'GameState', player: 'Player')
             if defender_will_be_banished and (defender.lore or 0) > 0:
                 score += defender.lore * 1.5
 
+            # Opportunity cost: subtract the lore the attacker could have gained by questing.
+            score -= (attacker.lore or 0)
+
             action.score = score
 
         elif isinstance(action, PlayCardAction):
@@ -160,6 +176,8 @@ def evaluate_actions(actions: List[Action], game: 'GameState', player: 'Player')
             keyword_scores = {
                 'Evasive': 5,
                 'Ward': 5,
+                'Rush': 10, # Rush provides immediate tempo and board impact
+                'Bodyguard': 7, # Bodyguard protects other valuable characters
             }
             for keyword in card.keywords:
                 score += keyword_scores.get(keyword, 0)
@@ -187,21 +205,57 @@ def evaluate_actions(actions: List[Action], game: 'GameState', player: 'Player')
 
             # Add score for beneficial OnPlay abilities for any card type
             for ability in card.abilities:
-                if ability.trigger == 'OnPlay':
-                    if ability.effect == 'DrawCard':
-                        # Drawing a card is very valuable.
-                        score += 28
+                if isinstance(ability, dict):
+                    # Handle abilities as dictionaries
+                    if ability.get('trigger') == 'OnPlay':
+                        if ability.get('effect') == 'DrawCard':
+                            # Drawing a card is very valuable.
+                            score += 28
+                elif hasattr(ability, 'trigger'):
+                    # Handle abilities as objects with attributes (backward compatibility)
+                    if ability.trigger == 'OnPlay':
+                        if ability.effect == 'DrawCard':
+                            # Drawing a card is very valuable.
+                            score += 28
 
             action.score = score
 
         elif isinstance(action, InkAction):
-            # Inking is generally a setup move, so it should have a low but positive score
-            # to be chosen when no better plays are available.
-            action.score = 0.1 # Small positive score to do it if nothing else is better
+            # Heuristic: The best card to ink is one that is least useful to play.
+            card_to_ink = action.card
+            
+            # Start with a baseline score for inking.
+            score = 5 # Inking is generally a good setup action.
+
+            # Calculate the card's value as if we were to play it.
+            play_score = 0
+            if card_to_ink.card_type == 'Location':
+                play_score = ((card_to_ink.lore or 0) * 5) + (card_to_ink.willpower or 0) - card_to_ink.cost
+            else:
+                play_score = (card_to_ink.strength or 0) + (card_to_ink.willpower or 0) + (card_to_ink.lore or 0) - card_to_ink.cost
+
+            # Penalize inking more valuable cards.
+            score -= play_score
+
+            # Bonus for inking a card that is currently unplayable anyway.
+            if card_to_ink.cost > player.get_available_ink():
+                score += 3
+
+            # Penalty for inking a card we could play this turn.
+            if card_to_ink.cost <= player.get_available_ink():
+                score -= 5
+
+            action.score = score
 
         elif isinstance(action, SingAction):
             # Singing a song is good tempo. Score it higher than just playing the card.
-            action.score = action.song_card.cost # Free value is good
+            # The value is the effect of the song, plus the ink saved.
+            song_card = action.song_card
+            play_action = PlayCardAction(song_card)
+            # Create a temporary list for the recursive call
+            temp_actions = [play_action]
+            evaluate_actions(temp_actions, game, player) # Recursively score the play action
+            action.score = temp_actions[0].score + song_card.cost
 
         elif isinstance(action, ActivateAbilityAction):
             ability = action.card.abilities[action.ability_index]
@@ -248,6 +302,9 @@ def get_possible_actions(game: 'GameState', player: 'Player', has_inked: bool) -
         # A character that is Reckless MUST challenge if able.
         if char.has_keyword('Reckless'):
             valid_targets = player.get_valid_challenge_targets(char, opponent)
+            # Additional safety check to ensure we're not challenging the same card
+            valid_targets = [target for target in valid_targets 
+                            if target.unique_id != char.unique_id and target.name != char.name]
             if valid_targets:
                 # This character can only challenge. Add challenge actions and nothing else for this character.
                 for defender in valid_targets:
@@ -267,13 +324,22 @@ def get_possible_actions(game: 'GameState', player: 'Player', has_inked: bool) -
 
         # Challenge Actions (for non-reckless characters)
         valid_targets = player.get_valid_challenge_targets(char, opponent)
+        # Additional safety check to ensure we're not challenging the same card
+        valid_targets = [target for target in valid_targets 
+                        if target.unique_id != char.unique_id and target.name != char.name]
         for defender in valid_targets:
             actions.append(ChallengeAction(char, defender))
 
         # Activated Ability Actions
         for i, ability in enumerate(char.abilities):
-            if ability.trigger == "Activated":
-                actions.append(ActivateAbilityAction(char, i))
+            if isinstance(ability, dict):
+                # Handle abilities as dictionaries
+                if ability.get('trigger') == "Activated":
+                    actions.append(ActivateAbilityAction(char, i))
+            elif hasattr(ability, 'trigger'):
+                # Handle abilities as objects with attributes (backward compatibility)
+                if ability.trigger == "Activated":
+                    actions.append(ActivateAbilityAction(char, i))
 
         # Sing Actions
         if char.has_keyword('Singer'):
@@ -287,8 +353,14 @@ def get_possible_actions(game: 'GameState', player: 'Player', has_inked: bool) -
     ready_items = [c for c in player.play_area if c.card_type == 'Item' and not c.is_exerted]
     for item in ready_items:
         for i, ability in enumerate(item.abilities):
-            if ability.trigger == "Activated":
-                actions.append(ActivateAbilityAction(item, i))
+            if isinstance(ability, dict):
+                # Handle abilities as dictionaries
+                if ability.get('trigger') == "Activated":
+                    actions.append(ActivateAbilityAction(item, i))
+            elif hasattr(ability, 'trigger'):
+                # Handle abilities as objects with attributes (backward compatibility)
+                if ability.trigger == "Activated":
+                    actions.append(ActivateAbilityAction(item, i))
 
     return actions
 

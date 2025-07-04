@@ -38,11 +38,16 @@ class TestGeneticAlgorithm(unittest.TestCase):
         solution_names = [self.deck_generator.id_to_card[id] for id in solution_ids]
         solution_idx = 0
 
-        self.ga.fitness_calculator.calculate_fitness = Mock(return_value=0.5)
+        # Mock to return a tuple (fitness, detailed_results)
+        self.ga.fitness_calculator.calculate_fitness = Mock(return_value=(0.5, {'wins': 1, 'losses': 1}))
 
-        fitness_value = self.ga._fitness_function_wrapper(None, solution_ids, solution_idx)
+        # Mock the ga_instance that pygad would normally pass to the wrapper
+        mock_ga_instance = Mock()
+        mock_ga_instance.best_solution_generation = -1 # Simulate initial state
+        fitness_value = self.ga._fitness_function_wrapper(mock_ga_instance, solution_ids, solution_idx)
 
-        self.ga.fitness_calculator.calculate_fitness.assert_called_once_with(solution_names)
+        # The wrapper should only care about the deck names
+        self.ga.fitness_calculator.calculate_fitness.assert_called_once_with(solution_names, max_turns=self.ga.max_turns_per_game)
         self.assertEqual(fitness_value, 0.5)
 
     def test_initial_population_is_created(self):
@@ -60,34 +65,48 @@ class TestGeneticAlgorithm(unittest.TestCase):
         parent2 = np.array(self.deck_generator.generate_deck())
         parents = np.vstack([parent1, parent2])
 
-        child_deck = self.ga._crossover_func(parents, (1, 60), None) # ga_instance is mocked
+        # The crossover function returns an array of offspring.
+        offspring = self.ga._crossover_func(parents, (1, 60), None) # ga_instance is mocked
+
+        self.assertIsInstance(offspring, np.ndarray)
+        self.assertEqual(offspring.shape[0], 1)
+        child_deck = offspring[0]
 
         self.assertEqual(len(child_deck), 60, "Child deck must have 60 cards.")
 
-        card_counts = {card: child_deck.count(card) for card in set(child_deck)}
+        # Convert to list for counting
+        child_deck_list = child_deck.tolist()
+        card_counts = {card: child_deck_list.count(card) for card in set(child_deck_list)}
         for card, count in card_counts.items():
             self.assertLessEqual(count, 4, f"Card ID {card} exceeds the 4-copy limit.")
 
         inks = self.deck_generator.get_deck_inks(child_deck)
         self.assertEqual(len(inks), 2, "Child deck must have exactly two inks.")
 
-    def test_mutation_produces_legal_deck(self):
-        """Tests that the custom mutation function produces a legal deck of card IDs."""
+    def test_mutation_maintains_legality(self):
+        """Tests that the custom mutation function maintains deck legality."""
         original_deck = np.array(self.deck_generator.generate_deck())
-        original_inks = self.deck_generator.get_deck_inks(original_deck.tolist())
 
-        mutated_deck_np = self.ga._mutation_func(original_deck, 0)
-        mutated_deck = mutated_deck_np.tolist()
+        # The mutation function expects a population (2D array), not a single individual.
+        # We pass it as a population of one.
+        population = np.array([original_deck])
 
-        # It's possible, though unlikely, that a mutation results in the same deck.
-        # A better test is to ensure it's still legal.
-        self.assertEqual(len(mutated_deck), 60, "Mutated deck must have 60 cards.")
+        mutated_population = self.ga._mutation_func(population, None) # ga_instance is mocked
 
-        card_counts = {card: mutated_deck.count(card) for card in set(mutated_deck)}
+        self.assertEqual(mutated_population.shape[0], 1)
+        mutated_deck_np = mutated_population[0]
+
+        self.assertEqual(len(mutated_deck_np), 60, "Mutated deck must have 60 cards.")
+
+        inks = self.deck_generator.get_deck_inks(mutated_deck_np)
+        self.assertEqual(len(inks), 2, "Mutated deck must have exactly two inks.")
+
+        card_counts = {card: mutated_deck_np.tolist().count(card) for card in set(mutated_deck_np.tolist())}
         for card, count in card_counts.items():
             self.assertLessEqual(count, 4, f"Card ID {card} exceeds the 4-copy limit after mutation.")
 
-        mutated_inks = self.deck_generator.get_deck_inks(mutated_deck)
+        original_inks = self.deck_generator.get_deck_inks(original_deck)
+        mutated_inks = self.deck_generator.get_deck_inks(mutated_deck_np)
         self.assertEqual(original_inks, mutated_inks, "Mutation must not change the deck's inks.")
 
     def test_ga_run_completes(self):

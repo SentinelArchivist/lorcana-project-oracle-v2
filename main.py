@@ -1,4 +1,5 @@
 import time
+import pandas as pd
 import tkinter as tk
 from tkinter import scrolledtext, ttk
 import threading
@@ -9,10 +10,10 @@ from src.genetic_algorithm import GeneticAlgorithm
 
 # --- Constants ---
 CARD_DATASET_PATH = 'data/processed/lorcana_card_master_dataset.csv'
+META_DECKS_PATH = 'data/processed/lorcana_metagame_decks.csv'
 POPULATION_SIZE = 50
 NUM_GENERATIONS = 100
 NUM_PARENTS_MATING = 10
-NUM_META_DECKS = 10
 MAX_TURNS_PER_GAME = 40  # Circuit breaker for each game simulation
 
 def main():
@@ -118,9 +119,15 @@ def main():
             deck_generator = DeckGenerator(card_dataset_path=CARD_DATASET_PATH)
             log_message(f"Deck Generator initialized with {len(deck_generator.unique_card_names)} unique cards.")
 
-            log_message(f"Generating {NUM_META_DECKS} meta decks...")
-            meta_deck_ids = [deck_generator.generate_deck() for _ in range(NUM_META_DECKS)]
-            meta_decks_names = [[deck_generator.id_to_card[id] for id in deck] for deck in meta_deck_ids]
+            log_message(f"Loading meta decks from {META_DECKS_PATH}...")
+            try:
+                meta_decks_df = pd.read_csv(META_DECKS_PATH)
+                # Group by deck name and aggregate card names into a list
+                meta_decks_names = meta_decks_df.groupby('Deck_Name')['Card_Name'].apply(list).tolist()
+                log_message(f"Successfully loaded {len(meta_decks_names)} meta decks.")
+            except FileNotFoundError:
+                log_message(f"ERROR: Meta decks file not found at '{META_DECKS_PATH}'. Using an empty list.")
+                meta_decks_names = []
 
             fitness_calculator = FitnessCalculator(deck_generator=deck_generator, meta_decks=meta_decks_names)
             log_message("Fitness Calculator initialized.")

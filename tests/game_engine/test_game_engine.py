@@ -2,13 +2,13 @@ import unittest
 import sys
 import os
 from unittest.mock import MagicMock, patch, call
+import json
 
 # Add the project root to the Python path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 sys.path.insert(0, project_root)
 
 from src.game_engine.game_engine import GameState, Player, Card, Deck
-from src.abilities.create_abilities_database import ParsedAbility
 
 # --- Test Fixtures ---
 
@@ -17,8 +17,10 @@ def create_mock_card_data(name: str, unique_id: str, **kwargs) -> dict:
     data = {
         'Name': name, 'Unique_ID': unique_id, 'Cost': 3, 'Inkable': True,
         'Strength': 2, 'Willpower': 4, 'Lore': 1, 'Type': 'Character',
-        'Abilities': []
+        'schema_abilities': []
     }
+    if 'Abilities' in kwargs:
+        kwargs['schema_abilities'] = kwargs.pop('Abilities')
     data.update(kwargs)
     return data
 
@@ -33,10 +35,10 @@ class TestKeywords(unittest.TestCase):
         """Set up a basic game state for each test."""
         self.p1_deck = Deck([Card(create_mock_card_data(f"P1-Card{i}", f"p1c{i}"), 1) for i in range(20)])
         self.p2_deck = Deck([Card(create_mock_card_data(f"P2-Card{i}", f"p2c{i}"), 2) for i in range(20)])
-        self.player1 = Player(1, self.p1_deck)
-        self.player2 = Player(2, self.p2_deck)
-        self.game = GameState(self.player1, self.player2)
-        self.game.turn_number = 2 # Avoid turn 1 draw skip
+        self.game = GameState(self.p1_deck, self.p2_deck)
+        self.player1 = self.game.players[1]
+        self.player2 = self.game.players[2]
+        self.game.turn_number = 2  # Avoid turn 1 draw skip
 
     def test_challenge_with_challenger(self):
         """Verify Challenger keyword adds strength to attacker."""
@@ -77,7 +79,9 @@ class TestKeywords(unittest.TestCase):
         bodyguard.is_exerted = True
 
         # Trying to challenge the non-bodyguard should fail
-        self.assertFalse(self.game.challenge(attacker, non_bodyguard), "Challenge should fail against non-bodyguard.")
+        with self.assertRaises(ValueError, msg="Challenge should fail against non-bodyguard."):
+            self.game.challenge(attacker, non_bodyguard)
+
         # Challenging the bodyguard should succeed
         self.assertTrue(self.game.challenge(attacker, bodyguard), "Challenge should succeed against bodyguard.")
 
@@ -123,11 +127,11 @@ class TestPlayerActions(unittest.TestCase):
     def setUp(self):
         p1_deck = create_mock_deck(player_id=1)
         p2_deck = create_mock_deck(player_id=2)
-        self.player1 = Player(player_id=1, deck=p1_deck)
-        self.player2 = Player(player_id=2, deck=p2_deck)
+        self.game = GameState(p1_deck, p2_deck)
+        self.player1 = self.game.players[1]
+        self.player2 = self.game.players[2]
         self.player1.draw_initial_hand()
         self.player2.draw_initial_hand()
-        self.game = GameState(self.player1, self.player2)
 
     def test_ink_card(self):
         inkable_card = next(c for c in self.player1.hand if c.inkable)
@@ -233,6 +237,30 @@ class TestPlayerActions(unittest.TestCase):
         self.assertNotIn(action_card, self.player1.hand)
         self.assertNotIn(action_card, self.player1.play_area)
 
+    def test_play_card_with_on_play_draw_effect(self):
+        """Verify that playing a card with an ON_PLAY DrawCard effect works."""
+        ability = {
+            'trigger': 'ON_PLAY',
+            'effect': 'DrawCard',
+            'target': 'Self',
+            'value': 1
+        }
+        action_card = Card(create_mock_card_data("Magic Mirror", "mm-1", Type='Action', Cost=1, Abilities=[ability]), 1)
+        self.player1.hand.append(action_card)
+        self.player1.inkwell.append(Card(create_mock_card_data("Ink Card", "ink-1"), 1))
+
+        initial_hand_size = len(self.player1.hand)
+        initial_deck_size = len(self.player1.deck.cards)
+
+        self.player1.play_card(action_card, self.game)
+
+        # Hand size should be the same (played 1, drew 1)
+        self.assertEqual(len(self.player1.hand), initial_hand_size)
+        # Deck size should decrease by 1
+        self.assertEqual(len(self.player1.deck.cards), initial_deck_size - 1)
+        # Action card should be in the discard pile
+        self.assertIn(action_card, self.player1.discard_pile)
+
     def test_sing_song(self):
         """Verify a character with Singer can play a Song for free."""
         song_card = Card(create_mock_card_data("Test Song", "song-1", Type='Song', Cost=3), 1)
@@ -267,6 +295,51 @@ class TestPlayerActions(unittest.TestCase):
         self.assertFalse(self.player1.sing_song(expensive_song, singer_char, self.game.turn_number))
         self.assertIn(expensive_song, self.player1.hand)
         self.assertFalse(singer_char.is_exerted)
+
+class TestEffectResolverIntegration(unittest.TestCase):
+    def setUp(self):
+        self.p1_deck = create_mock_deck(1)
+        self.p2_deck = create_mock_deck(2)
+        self.game = GameState(self.p1_deck, self.p2_deck)
+        self.player1 = self.game.players[1]
+        self.player2 = self.game.players[2]
+        self.game.turn_number = 2
+
+    def test_play_card_with_on_play_effect(self):
+        """
+        Integration test: Playing a card with an ON_PLAY effect should
+        trigger the effect resolver and modify the game state.
+        """
+        # 1. Setup
+        on_play_ability = {
+            "trigger": "ON_PLAY",
+            "effect": "ADD_KEYWORD",
+            "value": "Evasive",
+            "target": "ChosenCharacter"
+        }
+        schema_abilities_str = json.dumps([on_play_ability])
+
+        ability_card_data = create_mock_card_data(
+            "Fairy Godmother", "fg-1", Cost=1,
+            schema_abilities=schema_abilities_str
+        )
+        ability_card = Card(ability_card_data, 1)
+        self.player1.hand.append(ability_card)
+
+        target_character = Card(create_mock_card_data("Cinderella", "c-1"), 2)
+        self.player2.play_area.append(target_character)
+        self.assertEqual(target_character.keywords, set())
+
+        ink_card = Card(create_mock_card_data("Ink", "ink-1"), 1)
+        self.player1.inkwell.append(ink_card)
+
+        # 2. Action
+        self.player1.play_card(ability_card, self.game, chosen_targets=[target_character])
+
+        # 3. Assert
+        self.assertIn(ability_card, self.player1.play_area)
+        self.assertIn("Evasive", target_character.keywords)
+
 
 if __name__ == '__main__':
     unittest.main()

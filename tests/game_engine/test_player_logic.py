@@ -21,8 +21,10 @@ def create_mock_card_data(name: str, **kwargs) -> dict:
         'Strength': 1,
         'Willpower': 1,
         'Lore': 1,
-        'Abilities': []
+        'schema_abilities': []
     }
+    if 'Abilities' in kwargs:
+        kwargs['schema_abilities'] = kwargs.pop('Abilities')
     data.update(kwargs)
     return data
 

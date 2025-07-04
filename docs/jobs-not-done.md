@@ -26,8 +26,8 @@ This document outlines the systematic plan to bring Project Oracle to a state of
     - [x] **Phase 5 (Transformer TDD):** Implement the `AbilityTransformer` module to convert parsed data to the canonical schema.
     - [x] **Phase 6 (Transformer Integration):** Integrate the new transformer into the data pipeline.
 
-- [ ] **Task 1.3: Git Checkpoint: Foundational Stability**
-    - [ ] Once all tests in Phase 1 are passing, commit the changes to establish a verified, stable baseline.
+- [x] **Task 1.3: Git Checkpoint: Foundational Stability**
+    - [x] Once all tests in Phase 1 are passing, commit the changes to establish a verified, stable baseline.
 
 ---
 
@@ -35,14 +35,17 @@ This document outlines the systematic plan to bring Project Oracle to a state of
 
 **Objective:** To ensure the game simulation is an accurate and high-performance representation of a real Lorcana game, capable of handling complex card effects.
 
-- [ ] **Task 2.1: Implement the `EffectResolver` System**
-    - [ ] Design and build a robust `EffectResolver` class, guided by TDD.
-    - [ ] Implement logic to interpret the structured JSON from the abilities database and apply effects to the `GameState`.
-    - [ ] Write individual unit tests for every known effect type (e.g., 'DrawCard', 'DealDamage', 'ModifyStrength').
+- [x] **Task 2.1: Design and Implement the EffectResolver**
+    - [x] **Discovery:** The game engine can't interpret the `schema_abilities` data. A resolver is needed to apply effects to the `GameState`.
+    - [x] **Phase 1 (TDD - `ADD_KEYWORD`):** Implement logic to handle the `ADD_KEYWORD` effect for simple keywords (e.g., Evasive).
+    - [x] **Phase 2 (TDD - `ADD_KEYWORD` with value):** Extend logic to handle keywords with values (e.g., Resist +1).
+    - [x] **Phase 3 (TDD - `SET_SHIFT_COST`):** Implement logic to handle the `SET_SHIFT_COST` effect.
+    - [x] **Phase 4 (TDD - `SINGER`):** Implement logic to handle the `SINGER` effect.
+    - [x] **Phase 5 (Integration):** Integrate the `EffectResolver` into the `GameState` when cards are played.
 
-- [ ] **Task 2.2: Enhance AI Heuristics**
-    - [ ] Expand the `evaluate_actions` function in `player_logic.py` with more sophisticated scoring.
-    - [ ] Incorporate heuristics for board state analysis, removal prioritization, and card advantage.
+- [x] **Task 2.2: Enhance AI Heuristics**
+    - [x] Expand the `evaluate_actions` function in `player_logic.py` with more sophisticated scoring.
+    - [x] Incorporate heuristics for board state analysis, removal prioritization, and card advantage.
 
 - [ ] **Task 2.3: Performance Profiling and Optimization**
     - [ ] Use `cProfile` or a similar tool to identify performance bottlenecks within the `FitnessCalculator` and game simulation loop.
