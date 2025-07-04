@@ -1,0 +1,11 @@
+{
+    "max_turns_per_game": 50,
+    "parallel_simulation": true,
+    "num_workers": 4,
+    "game_sample_size": 10,
+    "cache_enabled": true,
+    "cache_size": 1000,
+    "detailed_logging": false,
+    "early_termination": true,
+    "early_termination_threshold": 0.8
+}

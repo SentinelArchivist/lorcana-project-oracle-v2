@@ -25,148 +25,170 @@ MAX_TURNS_PER_GAME = 40  # Circuit breaker for each game simulation
 
 def main():
     """
-    Main function to create and run the UI.
+    Main function to create and run the UI - Compact design that fits entirely in window.
     """
     root = tk.Tk()
-    root.title("Project Oracle")
-    root.geometry("900x700")
+    root.title("Project Oracle - Lorcana Deck Evolution")
+    root.geometry("1200x800")
+    root.minsize(1000, 700)
     
     # Initialize UI Manager
     ui_manager = UIManager(root)
-
-    # --- UI Elements ---
-    main_frame = tk.Frame(root, padx=10, pady=10)
-    main_frame.pack(fill=tk.BOTH, expand=True)
-
-    # Top frame for title and stats
-    top_frame = tk.Frame(main_frame)
-    top_frame.pack(fill=tk.X)
-    title_label = ttk.Label(top_frame, text="Lorcana Deck Evolution Engine", style="Header.TLabel")
-    title_label.pack(side=tk.LEFT, anchor=tk.W)
-
-    # Progress and Stats Frame - Using a grid layout for more organized display
-    progress_frame = ttk.LabelFrame(main_frame, text="Evolution Progress")
-    progress_frame.pack(fill=tk.X, pady=5)
     
-    # Setup grid layout
-    progress_frame.columnconfigure(0, weight=1)
-    progress_frame.columnconfigure(1, weight=1)
-    progress_frame.columnconfigure(2, weight=1)
+    # Main container - NO SCROLLING, everything fits in window
+    main_frame = ttk.Frame(root)
+    main_frame.pack(fill="both", expand=True, padx=10, pady=5)
     
-    # Row 1: Generation and Fitness
-    gen_label = ttk.Label(progress_frame, text="Generation: 0 / 0")
-    gen_label.grid(row=0, column=0, sticky="w", padx=5, pady=2)
+    # === COMPACT TOP SECTION ===
+    # Title and main controls in one compact row
+    header_frame = ttk.Frame(main_frame)
+    header_frame.pack(fill="x", pady=(0, 5))
     
-    fitness_label = ttk.Label(progress_frame, text="Best Fitness: N/A")
-    fitness_label.grid(row=0, column=1, sticky="w", padx=5, pady=2)
+    # Title (smaller)
+    ttk.Label(header_frame, text="Project Oracle - Lorcana Deck Evolution", font=('Arial', 10, 'bold')).pack(side="left")
     
-    time_label = ttk.Label(progress_frame, text="Time Remaining: N/A")
-    time_label.grid(row=0, column=2, sticky="w", padx=5, pady=2)
+    # Exit button
+    exit_button = ttk.Button(header_frame, text="Exit", command=root.quit)
+    exit_button.pack(side="right")
     
-    # Row 2: Progress Bar
-    progress_bar = ttk.Progressbar(progress_frame, orient='horizontal', mode='determinate', length=100)
-    progress_bar.grid(row=1, column=0, columnspan=3, sticky="ew", padx=5, pady=5)
+    # === COMPACT CONFIGURATION ===
+    config_frame = ttk.LabelFrame(main_frame, text="Configuration", padding=5)
+    config_frame.pack(fill="x", pady=(0, 5))
     
-    # Row 3: Progress Details
-    progress_details_label = ttk.Label(progress_frame, text="")
-    progress_details_label.grid(row=2, column=0, columnspan=3, sticky="w", padx=5, pady=2)
+    # Single compact row with all controls
+    controls_row = ttk.Frame(config_frame)
+    controls_row.pack(fill="x")
     
-    # Row 4: Fitness Graph
-    fitness_graph_frame = ttk.Frame(progress_frame)
-    fitness_graph_frame.grid(row=3, column=0, columnspan=3, sticky="ew", padx=5, pady=5)
+    # Meta decks (compact)
+    ttk.Label(controls_row, text="Meta Decks:").pack(side="left")
+    meta_deck_var = tk.StringVar(value="Latest")
+    meta_deck_dropdown = ttk.Combobox(controls_row, textvariable=meta_deck_var, state="readonly", width=20)
+    meta_deck_dropdown.pack(side="left", padx=2)
+    refresh_meta_button = ttk.Button(controls_row, text="Refresh")
+    refresh_meta_button.pack(side="left", padx=2)
     
-    # Create a figure for fitness history graph
-    fig, ax = plt.subplots(figsize=(8, 3))
-    ax.set_title('Fitness History')
-    ax.set_xlabel('Generation')
-    ax.set_ylabel('Fitness')
-    canvas = FigureCanvasTkAgg(fig, master=fitness_graph_frame)
-    canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-
-    # Create notebook (tabbed interface) for displaying different sections
-    notebook = ttk.Notebook(main_frame)
-    notebook.pack(fill=tk.BOTH, expand=True)
+    # Set rotation (compact)
+    rotation_var = tk.BooleanVar(value=False)
+    rotation_checkbox = ttk.Checkbutton(controls_row, text="Enable", variable=rotation_var)
+    rotation_checkbox.pack(side="left", padx=(10, 2))
+    ttk.Label(controls_row, text="Date:").pack(side="left")
+    rotation_date_var = tk.StringVar(value=datetime.date.today().strftime("%Y-%m-%d"))
+    date_entry = ttk.Entry(controls_row, textvariable=rotation_date_var, width=10)
+    date_entry.pack(side="left", padx=2)
     
-    # Tab 1: Evolution Log
+    # Start button
+    start_button = ttk.Button(controls_row, text="Start Evolution", style="Accent.TButton")
+    start_button.pack(side="left", padx=(10, 0))
+    
+    # === COMPACT PROGRESS SECTION ===
+    progress_frame = ttk.LabelFrame(main_frame, text="Progress", padding=3)
+    progress_frame.pack(fill="x", pady=(0, 3))
+    
+    # Single row with all progress info
+    progress_info = ttk.Frame(progress_frame)
+    progress_info.pack(fill="x")
+    
+    gen_label = ttk.Label(progress_info, text="Generation: 0 / 0", font=('Arial', 8))
+    gen_label.pack(side="left")
+    
+    fitness_label = ttk.Label(progress_info, text="Best Fitness: N/A", font=('Arial', 8))
+    fitness_label.pack(side="left", padx=10)
+    
+    time_label = ttk.Label(progress_info, text="Time Remaining: N/A", font=('Arial', 8))
+    time_label.pack(side="right")
+    
+    # Compact progress bar
+    progress_bar = ttk.Progressbar(progress_frame, mode='determinate')
+    progress_bar.pack(fill="x", pady=2)
+    
+    # === SPLIT LAYOUT: GRAPH LEFT, RESULTS RIGHT ===
+    content_frame = ttk.Frame(main_frame)
+    content_frame.pack(fill="both", expand=True)
+    
+    # Left side: Tiny fitness graph
+    graph_frame = ttk.LabelFrame(content_frame, text="Fitness", padding=2)
+    graph_frame.pack(side="left", fill="y", padx=(0, 3))
+    graph_frame.pack_propagate(False)  # Prevent expansion
+    graph_frame.configure(width=250, height=200)  # Fixed small size
+    
+    # Create tiny fitness graph
+    fig = plt.figure(figsize=(3, 2), facecolor='white')
+    ax = fig.add_subplot(111)
+    ax.set_title('Fitness', fontsize=7, pad=1)
+    ax.tick_params(axis='both', which='major', labelsize=5)
+    ax.grid(True, alpha=0.2)
+    
+    # Minimal layout adjustments
+    fig.subplots_adjust(left=0.15, right=0.95, top=0.9, bottom=0.15)
+    
+    canvas = FigureCanvasTkAgg(fig, master=graph_frame)
+    canvas.get_tk_widget().pack(fill="both", expand=True)
+    
+    # Right side: Compact results
+    results_frame = ttk.LabelFrame(content_frame, text="Results", padding=3)
+    results_frame.pack(side="right", fill="both", expand=True)
+    
+    # Compact notebook for results
+    notebook = ttk.Notebook(results_frame)
+    notebook.pack(fill="both", expand=True)
+    
+    # Evolution Log tab
     log_frame = ttk.Frame(notebook)
-    log_widget = scrolledtext.ScrolledText(log_frame, state=tk.DISABLED, wrap=tk.WORD, height=20)
-    log_widget.pack(fill=tk.BOTH, expand=True)
-    notebook.add(log_frame, text="Evolution Log")
+    log_widget = scrolledtext.ScrolledText(log_frame, height=12, wrap=tk.WORD, font=('Arial', 8))
+    log_widget.pack(fill="both", expand=True, padx=2, pady=2)
+    notebook.add(log_frame, text="Log")
     
-    # Tab 2: Best Deck - Enhanced with statistics and copy button
+    # Best Deck tab
     deck_frame = ttk.Frame(notebook)
     
-    # Deck header frame
-    deck_header_frame = ttk.Frame(deck_frame)
-    deck_header_frame.pack(fill=tk.X, padx=5, pady=5)
+    # Compact deck header
+    deck_header = ttk.Frame(deck_frame)
+    deck_header.pack(fill="x", padx=2, pady=2)
+    ttk.Label(deck_header, text="Evolved Deck", font=('Arial', 9, 'bold')).pack(side="left")
+    copy_button = ttk.Button(deck_header, text="Copy")
+    copy_button.pack(side="right")
     
-    deck_title_label = ttk.Label(deck_header_frame, text="Evolved Deck", style="Header.TLabel")
-    deck_title_label.pack(side=tk.LEFT, anchor=tk.W)
+    # Deck stats (compact)
+    deck_stats_label = ttk.Label(deck_frame, text="", font=('Arial', 7))
+    deck_stats_label.pack(padx=2, pady=1)
     
-    copy_button = ttk.Button(deck_header_frame, text="Copy to Clipboard", command=lambda: copy_deck_to_clipboard())
-    copy_button.pack(side=tk.RIGHT, anchor=tk.E, padx=5)
+    # Deck content (more lines to fit properly)
+    best_deck_widget = scrolledtext.ScrolledText(deck_frame, height=12, wrap=tk.WORD, font=('Arial', 8))
+    best_deck_widget.pack(fill="both", expand=True, padx=2, pady=2)
+    notebook.add(deck_frame, text="Deck")
     
-    # Stats frame for deck
-    deck_stats_frame = ttk.Frame(deck_frame)
-    deck_stats_frame.pack(fill=tk.X, padx=5, pady=5)
-    
-    deck_stats_label = ttk.Label(deck_stats_frame, text="")
-    deck_stats_label.pack(side=tk.LEFT, anchor=tk.W)
-    
-    # Deck content with improved formatting
-    deck_content_frame = ttk.Frame(deck_frame)
-    deck_content_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-    
-    best_deck_widget = scrolledtext.ScrolledText(deck_content_frame, state=tk.DISABLED, wrap=tk.WORD, height=20)
-    best_deck_widget.pack(fill=tk.BOTH, expand=True)
-    
-    notebook.add(deck_frame, text="Best Deck")
-    
-    # Tab 3: Deck Analysis
+    # Deck Analysis tab
     analysis_frame = ttk.Frame(notebook)
-    deck_analysis_widget = scrolledtext.ScrolledText(analysis_frame, state=tk.DISABLED, wrap=tk.WORD, height=20)
-    deck_analysis_widget.pack(fill=tk.BOTH, expand=True)
-    notebook.add(analysis_frame, text="Deck Analysis")
-
-    # Bottom frame for buttons and additional controls
-    control_frame = tk.Frame(main_frame)
-    control_frame.pack(fill=tk.X, pady=10)
+    deck_analysis_widget = scrolledtext.ScrolledText(analysis_frame, height=12, wrap=tk.WORD, font=('Arial', 8))
+    deck_analysis_widget.pack(fill="both", expand=True, padx=2, pady=2)
+    notebook.add(analysis_frame, text="Analysis")
     
-    # Database management frame (top part of control frame)
-    db_frame = tk.LabelFrame(control_frame, text="Database Management")
-    db_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
+    # === HELPER FUNCTIONS ===
+    def start_evolution_thread():
+        """Start the evolution process in a separate thread"""
+        if ui_manager.confirm_action("Confirm Start", "Starting the evolution process may take some time. Continue?"):
+            thread = threading.Thread(target=run_evolution_task, daemon=True)
+            thread.start()
     
-    # Meta deck selection
-    meta_deck_frame = tk.Frame(db_frame)
-    meta_deck_frame.pack(fill=tk.X, padx=5, pady=5)
-    meta_deck_label = ttk.Label(meta_deck_frame, text="Meta Decks:")
-    meta_deck_label.pack(side=tk.LEFT)
-    meta_deck_var = tk.StringVar(value="Latest")
-    meta_deck_dropdown = ttk.Combobox(meta_deck_frame, textvariable=meta_deck_var, state="readonly")
-    meta_deck_dropdown.pack(side=tk.LEFT, padx=5)
-    refresh_meta_button = ttk.Button(meta_deck_frame, text="Refresh", command=lambda: refresh_meta_deck_list())
-    refresh_meta_button.pack(side=tk.LEFT, padx=5)
+    def copy_deck_to_clipboard():
+        """Copy the current deck list to clipboard"""
+        try:
+            deck_content = best_deck_widget.get('1.0', tk.END).strip()
+            if deck_content:
+                root.clipboard_clear()
+                root.clipboard_append(deck_content)
+                ui_manager.show_info("Copied", "Deck list copied to clipboard!")
+            else:
+                ui_manager.show_warning("No Deck", "No deck available to copy.")
+        except Exception as e:
+            ui_manager.show_error("Error", f"Failed to copy deck: {e}")
     
-    # Add tooltips
-    ui_manager.create_tooltip(meta_deck_label, "Select which meta deck file to use for evolution")
-    ui_manager.create_tooltip(meta_deck_dropdown, "Choose 'Latest' for the most recent meta deck file, or select a specific file")
-    ui_manager.create_tooltip(refresh_meta_button, "Refresh the list of available meta deck files")
+    # Configure button commands
+    start_button.configure(command=start_evolution_thread)
+    refresh_meta_button.configure(command=lambda: refresh_meta_deck_list())
+    copy_button.configure(command=copy_deck_to_clipboard)
     
-    # Set rotation controls
-    rotation_frame = tk.Frame(db_frame)
-    rotation_frame.pack(fill=tk.X, padx=5, pady=5)
-    rotation_label = ttk.Label(rotation_frame, text="Set Rotation:")
-    rotation_label.pack(side=tk.LEFT)
-    rotation_var = tk.BooleanVar(value=False)
-    rotation_check = ttk.Checkbutton(rotation_frame, text="Enable", variable=rotation_var)
-    rotation_check.pack(side=tk.LEFT, padx=5)
-    date_label = ttk.Label(rotation_frame, text="Date:")
-    date_label.pack(side=tk.LEFT, padx=(10, 0))
-    rotation_date_var = tk.StringVar(value=datetime.date.today().strftime("%Y-%m-%d"))
-    rotation_date_entry = ttk.Entry(rotation_frame, textvariable=rotation_date_var, width=10)
-    rotation_date_entry.pack(side=tk.LEFT, padx=5)
-    
-    # Add validation to date entry
+    # Add date validation
     def validate_date_entry(event=None):
         if not ui_manager.validate_date_format(rotation_date_var.get()):
             ui_manager.show_error("Invalid Date", "Please enter a valid date in YYYY-MM-DD format.")
@@ -174,25 +196,7 @@ def main():
             return False
         return True
     
-    rotation_date_entry.bind("<FocusOut>", validate_date_entry)
-    
-    # Add tooltips
-    ui_manager.create_tooltip(rotation_label, "Enable set rotation to filter cards based on release date")
-    ui_manager.create_tooltip(rotation_check, "When enabled, only cards from legal sets will be used")
-    ui_manager.create_tooltip(date_label, "Specify the rotation date (YYYY-MM-DD)")
-    ui_manager.create_tooltip(rotation_date_entry, "Enter date in YYYY-MM-DD format")
-    
-    # Button frame
-    button_frame = tk.Frame(control_frame)
-    button_frame.pack(fill=tk.X, pady=5)
-    start_button = ttk.Button(button_frame, text="Start Evolution", style="Primary.TButton", command=start_evolution_thread)
-    start_button.pack(side=tk.LEFT, padx=10)
-    exit_button = ttk.Button(button_frame, text="Exit", command=root.quit)
-    exit_button.pack(side=tk.RIGHT, padx=10)
-    
-    # Add tooltips
-    ui_manager.create_tooltip(start_button, "Begin the deck evolution process")
-    ui_manager.create_tooltip(exit_button, "Exit the application")
+    date_entry.bind("<FocusOut>", validate_date_entry)
 
     # --- Helper Functions ---
     def log_message(message):
@@ -315,12 +319,7 @@ def main():
         
         deck_stats_label.config(text="   |   ".join(stats_text) if stats_text else "")
         
-    def copy_deck_to_clipboard():
-        """Copy the current deck list to clipboard"""
-        text = best_deck_widget.get(1.0, tk.END)
-        root.clipboard_clear()
-        root.clipboard_append(text)
-        ui_manager.show_info("Copy Complete", "Deck list copied to clipboard")
+
         
     def update_deck_analysis_display(analysis_report):
         deck_analysis_widget.config(state=tk.NORMAL)
@@ -423,7 +422,7 @@ def main():
 
     # --- Evolution Logic ---
     def refresh_meta_deck_list():
-        """Refresh the meta deck dropdown with available files"""
+        """Refresh the meta deck dropdown with available deck names from markdown file"""
         try:
             ui_manager.show_busy_cursor()
             
@@ -432,21 +431,34 @@ def main():
                 meta_decks_dir=META_DECKS_DIR
             )
             
-            # Get available meta deck files
-            available_files = db_manager.get_available_meta_deck_files()
+            # Get the canonical meta deck file path
+            meta_deck_path = db_manager.get_latest_meta_deck_file()
             
-            # Add "Latest" as the first option
-            dropdown_options = ["Latest"] + available_files
+            if meta_deck_path and meta_deck_path.endswith('.md'):
+                # Parse deck names from markdown file
+                deck_names = db_manager.get_meta_deck_names(meta_deck_path)
+                if deck_names:
+                    dropdown_options = ["All Decks"] + deck_names
+                else:
+                    dropdown_options = ["All Decks"]
+            else:
+                # Fallback to old CSV-based system
+                available_files = db_manager.get_available_meta_deck_files()
+                dropdown_options = ["Latest"] + available_files
+            
             meta_deck_dropdown['values'] = dropdown_options
             
-            # Set to Latest if not already set
+            # Set to first option if not already set
             if not meta_deck_var.get() or meta_deck_var.get() not in dropdown_options:
-                meta_deck_var.set("Latest")
+                meta_deck_var.set(dropdown_options[0] if dropdown_options else "All Decks")
                 
-            if not available_files:
-                log_message("No meta deck files found in the meta decks directory.")
+            if not dropdown_options or len(dropdown_options) <= 1:
+                log_message("No meta decks found - check data/raw/meta-decks.md file.")
+            else:
+                log_message(f"Loaded {len(dropdown_options)-1} meta decks from canonical source.")
+                
         except Exception as e:
-            ui_manager.show_error("Error", f"Failed to refresh meta deck list: {e}")
+            log_message(f"Error refreshing meta deck list: {str(e)}")
         finally:
             ui_manager.restore_cursor()
     
@@ -512,16 +524,33 @@ def main():
 
             # Load meta decks based on selection
             meta_deck_selection = meta_deck_var.get()
-            if meta_deck_selection == "Latest":
+            if meta_deck_selection == "All Decks" or meta_deck_selection == "Latest":
+                # Use canonical meta deck file for all decks or legacy "Latest" option
                 meta_deck_path = db_manager.get_latest_meta_deck_file()
-                log_message(f"Loading latest meta decks...")
+                log_message(f"Loading all meta decks from canonical source...")
             else:
-                meta_deck_path = os.path.join(META_DECKS_DIR, meta_deck_selection)
-                log_message(f"Loading meta decks from {meta_deck_selection}...")
+                # Individual deck selection - still use canonical file but filter later
+                meta_deck_path = db_manager.get_latest_meta_deck_file()
+                log_message(f"Loading specific meta deck: {meta_deck_selection}...")
                 
             meta_decks_names = db_manager.load_meta_decks(meta_deck_path)
+            
+            # If a specific deck was selected (not "All Decks"), filter to just that deck
+            if meta_deck_selection != "All Decks" and meta_deck_selection != "Latest" and meta_decks_names:
+                # Find the specific deck by name
+                deck_names = db_manager.get_meta_deck_names(meta_deck_path)
+                if meta_deck_selection in deck_names:
+                    deck_index = deck_names.index(meta_deck_selection)
+                    if deck_index < len(meta_decks_names):
+                        meta_decks_names = [meta_decks_names[deck_index]]
+                        log_message(f"Using specific deck: {meta_deck_selection}")
+                    else:
+                        log_message(f"Deck '{meta_deck_selection}' not found, using all decks.")
+                else:
+                    log_message(f"Deck '{meta_deck_selection}' not found, using all decks.")
+            
             if meta_decks_names:
-                log_message(f"Successfully loaded {len(meta_decks_names)} meta decks.")
+                log_message(f"Successfully loaded {len(meta_decks_names)} meta deck(s).")
             else:
                 log_message("No meta decks found. Using an empty list.")
                 meta_decks_names = []
@@ -543,7 +572,13 @@ def main():
             log_message(f"Starting evolution for {NUM_GENERATIONS} generations...")
 
             # This is a blocking call, run in a thread
-            best_solution, best_fitness = ga.run()
+            result = ga.run()
+            if result is None:
+                # Handle the case where ga.run() returns None
+                log_message("Error: Genetic algorithm returned None")
+                best_solution, best_fitness = None, 0
+            else:
+                best_solution, best_fitness = result
 
             end_time = time.time()
             log_message(f"\nEvolution finished in {end_time - start_time:.2f} seconds.")
@@ -588,12 +623,6 @@ def main():
             start_button.config(state=tk.NORMAL)
             ui_manager.restore_cursor()
 
-    def start_evolution_thread():
-        # Confirm before starting a potentially lengthy process
-        if ui_manager.confirm_action("Confirm Start", "Starting the evolution process may take some time. Continue?"):
-            thread = threading.Thread(target=run_evolution_task, daemon=True)
-            thread.start()
-            
     # Initialize the meta deck dropdown when the app starts
     refresh_meta_deck_list()
 

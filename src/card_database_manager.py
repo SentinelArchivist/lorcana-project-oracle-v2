@@ -92,11 +92,17 @@ class CardDatabaseManager:
     
     def get_latest_meta_deck_file(self) -> str:
         """
-        Get the most recent meta deck file based on filename date.
+        Get the canonical meta deck file - data/raw/meta-decks.md.
         
         Returns:
-            Path to the most recent meta deck file, or None if no files exist
+            Path to the canonical meta deck markdown file, or None if it doesn't exist
         """
+        # Use the canonical meta deck source file
+        canonical_path = os.path.join(self.project_root, 'data/raw/meta-decks.md')
+        if os.path.exists(canonical_path):
+            return canonical_path
+            
+        # Fallback to old CSV-based system if markdown doesn't exist
         files = self.get_available_meta_deck_files()
         
         if not files:
@@ -134,10 +140,10 @@ class CardDatabaseManager:
     @safe_operation(default_return=[], log_level='error')
     def load_meta_decks(self, meta_deck_path: Optional[str] = None) -> List[List[str]]:
         """
-        Load meta decks from the specified path or the most recent file.
+        Load meta decks from the specified path or the canonical markdown file.
         
         Args:
-            meta_deck_path: Path to the meta decks file. If None, uses the most recent file.
+            meta_deck_path: Path to the meta decks file. If None, uses the canonical file.
             
         Returns:
             List of deck lists, where each deck list is a list of card names
@@ -150,7 +156,11 @@ class CardDatabaseManager:
             
         self.current_meta_deck_path = meta_deck_path
         
-        # First attempt new format (list of deck lists)
+        # Check if it's the markdown format (canonical source)
+        if meta_deck_path.endswith('.md'):
+            return self._parse_meta_decks_markdown(meta_deck_path)
+        
+        # Fallback to CSV format
         deck_lists = []
         df = pd.read_csv(meta_deck_path)
         
@@ -247,3 +257,103 @@ class CardDatabaseManager:
         # Save to CSV
         pd.DataFrame(rows).to_csv(file_path, index=False)
         return file_path
+        
+    def _parse_meta_decks_markdown(self, md_path: str) -> List[List[str]]:
+        """
+        Parse meta decks from the canonical markdown format.
+        
+        Format:
+        # [Set N] Deck Name
+        4 Card Name
+        3 Another Card
+        1 Single Card
+        
+        # [Set N] Another Deck
+        ...
+        
+        Args:
+            md_path: Path to the markdown file
+            
+        Returns:
+            List of deck lists, where each deck list is a list of card names
+        """
+        deck_lists = []
+        current_deck = []
+        
+        try:
+            with open(md_path, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+                
+            for line in lines:
+                line = line.strip()
+                
+                # Skip empty lines
+                if not line:
+                    continue
+                
+                # New deck header
+                if line.startswith('# '):
+                    # If we have a current deck, add it to the list
+                    if current_deck:
+                        deck_lists.append(current_deck)
+                        current_deck = []
+                    continue
+                
+                # Card line: "4 Card Name"
+                if line[0].isdigit():
+                    parts = line.split(' ', 1)
+                    if len(parts) == 2:
+                        try:
+                            count = int(parts[0])
+                            card_name = parts[1].strip()
+                            # Add card multiple times based on count
+                            current_deck.extend([card_name] * count)
+                        except ValueError:
+                            # Skip malformed lines
+                            continue
+            
+            # Don't forget the last deck
+            if current_deck:
+                deck_lists.append(current_deck)
+                
+        except Exception as e:
+            print(f"Error parsing meta decks markdown: {e}")
+            return []
+            
+        return deck_lists
+        
+    def get_meta_deck_names(self, md_path: str) -> List[str]:
+        """
+        Extract deck names from the canonical markdown format.
+        
+        Args:
+            md_path: Path to the markdown file
+            
+        Returns:
+            List of deck names found in the markdown file
+        """
+        deck_names = []
+        
+        try:
+            with open(md_path, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+                
+            for line in lines:
+                line = line.strip()
+                
+                # Look for deck headers: "# [Set N] Deck Name"
+                if line.startswith('# '):
+                    # Extract deck name from header
+                    deck_header = line[2:].strip()  # Remove "# "
+                    # Remove the [Set N] prefix if present
+                    if '] ' in deck_header:
+                        deck_name = deck_header.split('] ', 1)[1]
+                    else:
+                        deck_name = deck_header
+                    deck_names.append(deck_name)
+                    
+        except Exception as e:
+            print(f"Error extracting deck names from markdown: {e}")
+            return []
+            
+        return deck_names
