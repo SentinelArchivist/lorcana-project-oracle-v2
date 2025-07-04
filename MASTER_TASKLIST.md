@@ -13,25 +13,56 @@ This document outlines the remaining tasks required to bring Project Oracle to f
   - [x] Remove the current logic that generates random meta decks on every run.
   - [x] Add a unit test to `tests/test_evolution.py` to confirm that the `FitnessCalculator` is initialized with the correct, static meta-deck data from the CSV.
 
-- [ ] **Task 1.2: Refactor Challenge Target Validation**
-  - [ ] Locate the duplicated code for validating challenge targets within the `src/game_engine/` directory.
-  - [ ] Create a new private helper method within the appropriate class (e.g., `GameState` or `Player`) to encapsulate this logic.
-  - [ ] Update all original call sites to use the new, single helper method.
+- [x] **Task 1.2: Refactor Challenge Target Validation**
+  - [x] Locate the duplicated code for validating challenge targets within the `src/game_engine/` directory.
+  - [x] Create a new private helper method within the appropriate class (e.g., `GameState` or `Player`) to encapsulate this logic.
+  - [x] Update all original call sites to use the new, single helper method.
 
 ---
 
 ## Stage 2: Feature Enhancements & AI Improvements
 *This stage focuses on implementing planned features from the project documentation to improve the simulation's fidelity and the AI's intelligence.*
 
-- [ ] **Task 2.1: Implement Advanced Targeting Logic**
-  - [ ] Analyze the `TODO` in the `_get_targets` method within `src/game_engine/effect_resolver.py`.
-  - [ ] Design and implement the logic required to handle more complex, conditional targeting (e.g., "choose a character with cost 3 or less," "choose an exerted character").
-  - [ ] Add new, specific unit tests to `tests/test_game_engine.py` to validate the new targeting capabilities.
+- [x] **Task 2.1: Implement Advanced Targeting Logic**
+  - [x] Analyze the `TODO` in the `_get_targets` method within `src/game_engine/effect_resolver.py`.
+  - [x] Design and implement the logic required to handle more complex, conditional targeting (e.g., "choose a character with cost 3 or less," "choose an exerted character").
+  - [x] Add new, specific unit tests to `tests/test_game_engine.py` to validate the new targeting capabilities.
 
-- [ ] **Task 2.2: Implement Advanced AI Heuristics (Synergy Scoring)**
+- [ ] **Task 2.2: Implement Advanced AI Heuristics**
   - [ ] Research and design a system for quantifying card synergy within a deck or hand. This may involve pre-calculating synergy scores or evaluating them at runtime.
-  - [ ] Integrate the synergy scoring system into the `Player`'s decision-making process in `src/game_engine/player_logic.py`.
-  - [ ] Add unit tests to `tests/test_game_engine.py` to verify that the AI makes different (and better) decisions when synergy is considered.
+  - [ ] Implement the composite board state evaluation function described in the programmer's guide (section 5.2), incorporating lore delta, potential lore, board presence, and card advantage factors.
+  - [ ] Enhance the inkwell choice heuristic to better evaluate cards based on cost vs. turn number, redundancy, situational usefulness, and core win condition status.
+  - [ ] Implement limited lookahead analysis to anticipate opponent responses as outlined in section 5.3 of the guide.
+  - [ ] Integrate all these heuristics into the `Player`'s decision-making process in `src/game_engine/player_logic.py`.
+  - [ ] Add unit tests to `tests/test_game_engine.py` to verify that the AI makes different (and better) decisions with these enhancements.
+
+  - [ ] **Task 2.3: Implement Missing Card Types and Keywords**
+  - [ ] **Location Cards**
+    - [x] Complete the implementation of Location card type with move cost mechanics
+    - [ ] Add passive lore gain at start of turn for Locations with lore value
+    - [x] Implement location challenge mechanics (no return damage)
+  - [ ] **Keywords**
+    - [ ] Implement Rush keyword to bypass the "ink is dry" requirement for challenges
+    - [ ] Complete Ward implementation with proper targeting restrictions
+    - [ ] Implement Vanish keyword effects when targeted by opponents
+    - [ ] Implement Sing Together mechanic to allow multiple characters to exert for a song
+  - [ ] Add unit tests for each newly implemented card type and keyword
+
+- [ ] **Task 2.4: Implement "The Bag" for Simultaneous Trigger Resolution**
+  - [ ] Design and implement the mechanism for tracking and resolving simultaneous ability triggers as described in section 1.4 of the programmer's guide.
+  - [ ] Modify the effect resolver to properly queue triggered abilities and resolve them according to active player priority.
+  - [ ] Add unit tests to validate correct resolution order of simultaneous triggers.
+
+- [ ] **Task 2.5: Add Deck Result Explanations**
+  - [ ] Implement analytics to identify key synergies in generated decks
+  - [ ] Create a system to explain card choices based on their performance in simulations
+  - [ ] Generate a brief report highlighting strengths and strategic approach of evolved decks
+
+- [ ] **Task 2.6: Handle Card Database Management**
+  - [ ] Create a configurable system for handling meta-deck filenames with dates
+  - [ ] Implement set rotation functionality to filter cards based on legality
+  - [ ] Add an option to restrict card pools by expansion set
+  - [ ] Ensure the card database stays up-to-date with the latest releases
 
 ---
 
@@ -49,24 +80,27 @@ This document outlines the remaining tasks required to bring Project Oracle to f
   - [ ] Run the GA in a separate thread from the main UI thread to prevent the application from freezing during the evolutionary process. Update the UI elements via the callback.
 
 - [ ] **Task 3.3: Enhance Final Results Display**
-  - [ ] Design a clear and comprehensive view for the final, optimized deck.
-  - [ ] Display the full 60-card list, the final fitness score, and the two ink colors.
+  - [ ] Improve formatting and readability of the generated deck list.
+  - [ ] Add basic statistics about the GA run (generations, fitness progression).
+  - [ ] Include summary of matchup performance against meta decks.
+  - [ ] Display the deck explanation generated in Task 2.5.
   - [ ] Add a "Copy to Clipboard" button for the decklist.
 
 ---
 
 ## Stage 4: Final Polish, Documentation & Deployment
-*This final stage involves preparing the application for release.*
+*This final stage involves preparing the application for use.*
 
 - [ ] **Task 4.1: Update All Project Documentation**
   - [ ] Review and update `README.md` to reflect all changes, ensuring the setup and usage instructions are accurate.
   - [ ] Mark all tasks in this `MASTER_TASKLIST.md` as complete.
 
-- [ ] **Task 4.2: Final Code Cleanup**
-  - [ ] Perform a final pass through the entire codebase to remove any remaining debugging `print` statements, commented-out code, and unused imports.
-  - [ ] Ensure all code adheres to a consistent formatting standard (e.g., Black).
-
-- [ ] **Task 4.3: Package Application for Distribution**
-  - [ ] Research and implement a packaging solution like `PyInstaller` or `cx_Freeze` to create a standalone executable.
-  - [ ] Create executables for target operating systems (e.g., macOS, Windows).
-  - [ ] Add a new "Installation" section to the `README.md` with instructions for downloading and running the packaged application.
+- [ ] **Task 4.2: Final Code Cleanup and Optimization**
+  - [ ] Remove any remaining debug print statements.
+  - [ ] Consolidate and reduce code duplication.
+  - [ ] Standardize error handling patterns.
+  - [ ] Ensure consistent naming conventions.
+  - [ ] Optimize simulation performance for MacBook Air M4 target
+  - [ ] Implement parallel processing for fitness calculations where possible
+  - [ ] Profile and optimize the most time-consuming operations
+  - [ ] Add a configuration option to adjust simulation depth vs. speed tradeoffs

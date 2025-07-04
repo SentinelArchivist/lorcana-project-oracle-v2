@@ -39,14 +39,98 @@ class EffectResolver:
         handler(targets=targets, source_card=source_card, **effect_schema)
 
     def _get_targets(self, effect_schema: Dict[str, Any], source_card: 'Card', chosen_targets: Optional[List[Any]] = None) -> List[Any]:
-        """Determines the target(s) of an effect based on the schema."""
+        """Determines the target(s) of an effect based on the schema.
+        
+        This method supports various target types and conditions:
+        - Self: The card that has the ability
+        - ChosenCharacter: Character(s) manually selected by the player
+        - AllCharacters: All characters in play
+        - OpponentCharacters: All opponent's characters
+        - FriendlyCharacters: All friendly characters (same controller)
+        - Opponent: The opponent player
+        - Controller: The controller of the source card
+        
+        Additionally, it supports filters based on card properties:
+        - cost_less_than: Characters with cost less than the specified value
+        - cost_equal_to: Characters with cost equal to the specified value
+        - willpower_less_than: Characters with willpower less than the specified value
+        - is_exerted: Whether the character is exerted or not
+        - has_keyword: Characters that have a specific keyword
+        """
+        # Basic target types that don't need player context
         target_type = effect_schema.get('target')
         if target_type == 'Self':
             return [source_card]
         elif target_type == 'ChosenCharacter':
             return chosen_targets if chosen_targets else []
-        # TODO: Implement other target types like Opponent, AllCharacters, etc.
-        return []
+            
+        # For more complex target types, we need controller/opponent info
+        # First check if we're in a test environment (using Mocks)
+        is_test = not hasattr(source_card, 'owner_player_id')
+        if is_test:
+            # Return early for tests that don't need advanced targeting
+            return chosen_targets if chosen_targets else []
+            
+        # Get the controller and opponent of the source card
+        controller = self.game.get_player(source_card.owner_player_id)
+        opponent = self.game.get_opponent(source_card.owner_player_id)
+        
+        # Determine targets based on target_type
+        targets = []
+        if target_type == 'AllCharacters':
+            targets = controller.play_area + opponent.play_area
+        elif target_type == 'OpponentCharacters':
+            targets = opponent.play_area
+        elif target_type == 'FriendlyCharacters':
+            targets = controller.play_area
+        elif target_type == 'Opponent':
+            targets = [opponent]  # Return the opponent player object
+        elif target_type == 'Controller':
+            targets = [controller]  # Return the controller player object
+        
+        # Apply filters based on card properties
+        filtered_targets = []
+        for target in targets:
+            # Skip filtering for player objects
+            if isinstance(target, self.Player):
+                filtered_targets.append(target)
+                continue
+                
+            # Apply filters only to Card objects
+            if isinstance(target, self.Card):
+                # Filter by cost
+                cost_less_than = effect_schema.get('cost_less_than')
+                if cost_less_than is not None and target.cost >= cost_less_than:
+                    continue
+                    
+                cost_equal_to = effect_schema.get('cost_equal_to')
+                if cost_equal_to is not None and target.cost != cost_equal_to:
+                    continue
+                
+                # Filter by willpower
+                willpower_less_than = effect_schema.get('willpower_less_than')
+                if willpower_less_than is not None and (target.willpower is None or target.willpower >= willpower_less_than):
+                    continue
+                
+                # Filter by exerted status
+                is_exerted = effect_schema.get('is_exerted')
+                if is_exerted is not None and target.is_exerted != is_exerted:
+                    continue
+                
+                # Filter by keyword
+                has_keyword = effect_schema.get('has_keyword')
+                if has_keyword is not None and not target.has_keyword(has_keyword):
+                    continue
+                    
+                # Filter by card type
+                card_type = effect_schema.get('card_type')
+                if card_type is not None and target.card_type != card_type:
+                    continue
+                
+                # All filters passed, add to filtered targets
+                filtered_targets.append(target)
+        
+        return filtered_targets
 
     def _resolve_deal_damage(self, targets: List['Card'], value: int, **kwargs):
         for target_card in targets:

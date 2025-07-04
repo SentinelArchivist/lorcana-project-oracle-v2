@@ -1,5 +1,6 @@
 import random
 import json
+import uuid
 from typing import List, Dict, Optional, Any, TYPE_CHECKING
 import pandas as pd
 
@@ -12,7 +13,8 @@ if TYPE_CHECKING:
 class Card:
     """Represents a single instance of a card within a game."""
     def __init__(self, card_data: Dict[str, Any], owner_player_id: int):
-        self.unique_id = card_data.get('Unique_ID')
+        # Generate a unique ID if not provided
+        self.unique_id = card_data.get('Unique_ID') or str(uuid.uuid4())
         self.name = card_data.get('Name')
         self.cost = card_data.get('Cost', 0)
         self.inkable = card_data.get('Inkable', False)
@@ -65,12 +67,23 @@ class Card:
         """Checks if a card has a specific keyword ability, including temporary ones."""
         if any(kw.lower().startswith(keyword.lower()) for kw in self.keywords):
             return True
+            
+        # Handle ability keywords - check both dict and object styles
         for ability in self.abilities:
-            if isinstance(ability.get('value'), dict) and ability['value'].get('keyword') == keyword:
-                return True
+            # Handle dictionary-style abilities
+            if isinstance(ability, dict):
+                if isinstance(ability.get('value'), dict) and ability['value'].get('keyword') == keyword:
+                    return True
+            # Handle ParsedAbility objects
+            elif hasattr(ability, 'value'):
+                if isinstance(ability.value, dict) and ability.value.get('keyword') == keyword:
+                    return True
+                    
+        # Check keyword modifiers
         for modifier in self.keyword_modifiers:
             if modifier.get('keyword') == keyword:
                 return True
+                
         return False
 
     def get_keyword_value(self, keyword: str) -> Optional[int]:
@@ -267,9 +280,17 @@ class Player:
 
         # Resolve OnPlay abilities
         for ability in card.abilities:
-            trigger = ability.get('trigger')
-            if trigger == 'ON_PLAY':
-                game.effect_resolver.resolve_effect(effect_schema=ability, source_card=card, chosen_targets=chosen_targets)
+            # Handle ability as either dict or object
+            if isinstance(ability, dict):
+                trigger = ability.get('trigger')
+            elif hasattr(ability, 'trigger'):
+                trigger = ability.trigger
+            else:
+                continue  # Skip abilities with unknown format
+                
+            if trigger and trigger.upper() == "ON_PLAY":
+                if game.effect_resolver:
+                    game.effect_resolver.resolve_effect(ability, source_card=card, chosen_targets=chosen_targets)
 
     def sing_song(self, song_card: Card, singer: Card, game_turn: int) -> bool:
         """Plays a song by exerting a character. Returns True on success."""
@@ -337,9 +358,12 @@ class Player:
 
     def get_valid_challenge_targets(self, challenger: Card, opponent: 'Player') -> list[Card]:
         """Returns a list of valid characters the given character can challenge."""
+        # First check for bodyguards (they must be challenged first if present)
         bodyguard_targets = [char for char in opponent.play_area if char.is_exerted and char.has_keyword('Bodyguard')]
         if bodyguard_targets:
-            return bodyguard_targets
+            return self._filter_invalid_challenge_targets(challenger, bodyguard_targets)
+            
+        # Find all valid targets based on game rules
         valid_targets = []
         challenger_has_evasive = challenger.has_keyword('Evasive')
         for target in opponent.play_area:
@@ -348,7 +372,19 @@ class Player:
             if target.has_keyword('Evasive') and not challenger_has_evasive:
                 continue
             valid_targets.append(target)
-        return valid_targets
+            
+        # Filter out invalid targets (e.g., self-challenge)
+        return self._filter_invalid_challenge_targets(challenger, valid_targets)
+        
+    def _filter_invalid_challenge_targets(self, challenger: Card, targets: list[Card]) -> list[Card]:
+        """Filters out invalid challenge targets (e.g., self-challenge, same name, or Location)."""
+        # Remove targets that are the same card, have the same name as the challenger, or are Locations
+        # Also prevent Locations from initiating challenges
+        return [target for target in targets 
+                if target.unique_id != challenger.unique_id 
+                and target.name != challenger.name 
+                and target.card_type != 'Location' 
+                and challenger.card_type != 'Location']
 
     def get_valid_effect_targets(self, opponent: 'Player') -> list[Card]:
         """Returns a list of characters on the opponent's board that can be targeted by effects."""
