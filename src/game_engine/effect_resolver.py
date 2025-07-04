@@ -26,17 +26,59 @@ class EffectResolver:
         """
         Resolves a single effect based on its schema.
         This is the primary method for executing abilities.
+        
+        If the effect is a triggered ability, it will be added to The Bag.
+        Otherwise, it will be executed immediately.
         """
         handler = self.effect_map.get(effect_schema.get('effect'))
         if not handler:
             return
-
+        
+        # If the game's trigger bag is resolving and this is a new triggered ability,
+        # add it to the pending triggers instead of resolving it immediately
+        if hasattr(self.game, 'trigger_bag') and self.is_triggered_ability(effect_schema) and self.game.trigger_bag.resolving:
+            self.game.trigger_bag.add_trigger(
+                player_id=source_card.owner_player_id,
+                effect_schema=effect_schema,
+                source_card=source_card,
+                chosen_targets=chosen_targets
+            )
+            return
+        
         targets = self._get_targets(effect_schema, source_card, chosen_targets)
         if not targets:
             return
 
         # Pass the whole schema as kwargs to the handler, plus the source card
         handler(targets=targets, source_card=source_card, **effect_schema)
+
+    def is_triggered_ability(self, effect_schema: Dict[str, Any]) -> bool:
+        """
+        Determines if an effect is a triggered ability that should go into The Bag.
+        
+        Args:
+            effect_schema: The effect schema to check
+            
+        Returns:
+            bool: True if this is a triggered ability, False otherwise
+        """
+        # Check for trigger condition keywords in the effect schema
+        trigger_conditions = [
+            'when_enters_play',
+            'when_character_enters_play',
+            'when_banished',
+            'at_start_of_turn',
+            'at_end_of_turn',
+            'when_quests',
+            'when_challenges'
+        ]
+        
+        # If any of these conditions are in the schema, it's a triggered ability
+        for condition in trigger_conditions:
+            if effect_schema.get(condition):
+                return True
+        
+        return False
 
     def _get_targets(self, effect_schema: Dict[str, Any], source_card: 'Card', chosen_targets: Optional[List[Any]] = None) -> List[Any]:
         """Determines the target(s) of an effect based on the schema.

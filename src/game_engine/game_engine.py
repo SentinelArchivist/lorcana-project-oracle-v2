@@ -6,6 +6,7 @@ import pandas as pd
 
 from . import player_logic
 from .effect_resolver import EffectResolver
+from .trigger_bag import TriggerBag
 
 if TYPE_CHECKING:
     from .game_engine import GameState
@@ -436,6 +437,7 @@ class GameState:
         self.initial_player_id = 1
         self.winner: Optional[int] = None
         self.effect_resolver = EffectResolver(game=self, card_class=Card, player_class=Player)
+        self.trigger_bag = TriggerBag(self)
 
     def get_player(self, player_id: int) -> Player:
         """Gets a player by their ID."""
@@ -471,8 +473,20 @@ class GameState:
                 player.lore += card.lore
                 print(f"{player.player_id} gained {card.lore} lore from {card.name}")
         
-        # Add placeholder for other start-of-turn triggers to be implemented later
-        pass
+        # Add any 'at_start_of_turn' triggered abilities to The Bag
+        for player_id in [self.current_player_id, self.get_opponent(self.current_player_id).player_id]:
+            player = self.get_player(player_id)
+            for card in player.play_area:
+                for ability in card.abilities:
+                    if isinstance(ability, dict) and ability.get('at_start_of_turn'):
+                        self.trigger_bag.add_trigger(
+                            player_id=player_id,
+                            effect_schema=ability,
+                            source_card=card
+                        )
+        
+        # Resolve all triggered abilities in The Bag
+        self.trigger_bag.resolve_triggers()
 
     def _draw_phase(self):
         """Current player draws a card."""
@@ -548,6 +562,22 @@ class GameState:
     def end_turn(self):
         """Ends the current turn and passes to the next player."""
         if self.winner: return
+
+        # Process end-of-turn triggers
+        # Add any 'at_end_of_turn' triggered abilities to The Bag
+        for player_id in [self.current_player_id, self.get_opponent(self.current_player_id).player_id]:
+            player = self.get_player(player_id)
+            for card in player.play_area:
+                for ability in card.abilities:
+                    if isinstance(ability, dict) and ability.get('at_end_of_turn'):
+                        self.trigger_bag.add_trigger(
+                            player_id=player_id,
+                            effect_schema=ability,
+                            source_card=card
+                        )
+        
+        # Resolve all triggered abilities in The Bag
+        self.trigger_bag.resolve_triggers()
 
         current_player = self.get_player(self.current_player_id)
         current_player.clear_temporary_mods()

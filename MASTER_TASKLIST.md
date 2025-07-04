@@ -48,10 +48,10 @@ This document outlines the remaining tasks required to bring Project Oracle to f
     - [x] Implement Sing Together mechanic to allow multiple characters to exert for a song
   - [x] Add unit tests for each newly implemented card type and keyword
 
-- [ ] **Task 2.4: Implement "The Bag" for Simultaneous Trigger Resolution**
-  - [ ] Design and implement the mechanism for tracking and resolving simultaneous ability triggers as described in section 1.4 of the programmer's guide.
-  - [ ] Modify the effect resolver to properly queue triggered abilities and resolve them according to active player priority.
-  - [ ] Add unit tests to validate correct resolution order of simultaneous triggers.
+- [x] **Task 2.4: Implement "The Bag" for Simultaneous Trigger Resolution**
+  - [x] Design and implement the mechanism for tracking and resolving simultaneous ability triggers as described in section 1.4 of the programmer's guide.
+  - [x] Modify the effect resolver to properly queue triggered abilities and resolve them according to active player priority.
+  - [x] Add unit tests to validate correct resolution order of simultaneous triggers.
 
 - [ ] **Task 2.5: Add Deck Result Explanations**
   - [ ] Implement analytics to identify key synergies in generated decks
