@@ -69,10 +69,10 @@ This document outlines the remaining tasks required to bring Project Oracle to f
 ## Stage 3: UI/UX Development & Refinement
 *This stage focuses on ensuring the `tkinter` UI is robust, user-friendly, and provides adequate feedback.*
 
-- [ ] **Task 3.1: Conduct Full UI Review and Testing**
-  - [ ] Analyze the UI code within `main.py` to map out all components and user flows.
-  - [ ] Run the application and manually test every UI element (buttons, input fields, display areas) for correct functionality and layout.
-  - [ ] Document and fix any identified bugs, such as unresponsive elements or visual glitches.
+- [x] **Task 3.1: Conduct Full UI Review and Testing**
+  - [x] Analyze the UI code within `main.py` to map out all components and user flows.
+  - [x] Run the application and manually test every UI element (buttons, input fields, display areas) for correct functionality and layout.
+  - [x] Document and fix any identified bugs, such as unresponsive elements or visual glitches.
 
 - [ ] **Task 3.2: Implement Real-Time GA Progress Feedback**
   - [ ] Modify the GA `run` method to accept a callback function for reporting progress.

@@ -10,6 +10,7 @@ from src.deck_generator import DeckGenerator
 from src.evolution import FitnessCalculator
 from src.genetic_algorithm import GeneticAlgorithm
 from src.card_database_manager import CardDatabaseManager
+from src.ui_utils import UIManager
 
 # --- Constants ---
 CARD_DATASET_PATH = 'data/processed/lorcana_card_master_dataset.csv'
@@ -26,6 +27,9 @@ def main():
     root = tk.Tk()
     root.title("Project Oracle")
     root.geometry("900x700")
+    
+    # Initialize UI Manager
+    ui_manager = UIManager(root)
 
     # --- UI Elements ---
     main_frame = tk.Frame(root, padx=10, pady=10)
@@ -34,7 +38,7 @@ def main():
     # Top frame for title and stats
     top_frame = tk.Frame(main_frame)
     top_frame.pack(fill=tk.X)
-    title_label = tk.Label(top_frame, text="Lorcana Deck Evolution Engine", font=("Helvetica", 16))
+    title_label = ttk.Label(top_frame, text="Lorcana Deck Evolution Engine", style="Header.TLabel")
     title_label.pack(side=tk.LEFT, anchor=tk.W)
 
     stats_frame = tk.Frame(main_frame, pady=5)
@@ -80,32 +84,60 @@ def main():
     # Meta deck selection
     meta_deck_frame = tk.Frame(db_frame)
     meta_deck_frame.pack(fill=tk.X, padx=5, pady=5)
-    tk.Label(meta_deck_frame, text="Meta Decks:").pack(side=tk.LEFT)
+    meta_deck_label = ttk.Label(meta_deck_frame, text="Meta Decks:")
+    meta_deck_label.pack(side=tk.LEFT)
     meta_deck_var = tk.StringVar(value="Latest")
     meta_deck_dropdown = ttk.Combobox(meta_deck_frame, textvariable=meta_deck_var, state="readonly")
     meta_deck_dropdown.pack(side=tk.LEFT, padx=5)
-    refresh_meta_button = tk.Button(meta_deck_frame, text="Refresh", command=lambda: refresh_meta_deck_list())
+    refresh_meta_button = ttk.Button(meta_deck_frame, text="Refresh", command=lambda: refresh_meta_deck_list())
     refresh_meta_button.pack(side=tk.LEFT, padx=5)
+    
+    # Add tooltips
+    ui_manager.create_tooltip(meta_deck_label, "Select which meta deck file to use for evolution")
+    ui_manager.create_tooltip(meta_deck_dropdown, "Choose 'Latest' for the most recent meta deck file, or select a specific file")
+    ui_manager.create_tooltip(refresh_meta_button, "Refresh the list of available meta deck files")
     
     # Set rotation controls
     rotation_frame = tk.Frame(db_frame)
     rotation_frame.pack(fill=tk.X, padx=5, pady=5)
-    tk.Label(rotation_frame, text="Set Rotation:").pack(side=tk.LEFT)
+    rotation_label = ttk.Label(rotation_frame, text="Set Rotation:")
+    rotation_label.pack(side=tk.LEFT)
     rotation_var = tk.BooleanVar(value=False)
-    rotation_check = tk.Checkbutton(rotation_frame, text="Enable", variable=rotation_var)
+    rotation_check = ttk.Checkbutton(rotation_frame, text="Enable", variable=rotation_var)
     rotation_check.pack(side=tk.LEFT, padx=5)
-    tk.Label(rotation_frame, text="Date:").pack(side=tk.LEFT, padx=(10, 0))
+    date_label = ttk.Label(rotation_frame, text="Date:")
+    date_label.pack(side=tk.LEFT, padx=(10, 0))
     rotation_date_var = tk.StringVar(value=datetime.date.today().strftime("%Y-%m-%d"))
-    rotation_date_entry = tk.Entry(rotation_frame, textvariable=rotation_date_var, width=10)
+    rotation_date_entry = ttk.Entry(rotation_frame, textvariable=rotation_date_var, width=10)
     rotation_date_entry.pack(side=tk.LEFT, padx=5)
+    
+    # Add validation to date entry
+    def validate_date_entry(event=None):
+        if not ui_manager.validate_date_format(rotation_date_var.get()):
+            ui_manager.show_error("Invalid Date", "Please enter a valid date in YYYY-MM-DD format.")
+            rotation_date_entry.focus_set()
+            return False
+        return True
+    
+    rotation_date_entry.bind("<FocusOut>", validate_date_entry)
+    
+    # Add tooltips
+    ui_manager.create_tooltip(rotation_label, "Enable set rotation to filter cards based on release date")
+    ui_manager.create_tooltip(rotation_check, "When enabled, only cards from legal sets will be used")
+    ui_manager.create_tooltip(date_label, "Specify the rotation date (YYYY-MM-DD)")
+    ui_manager.create_tooltip(rotation_date_entry, "Enter date in YYYY-MM-DD format")
     
     # Button frame
     button_frame = tk.Frame(control_frame)
     button_frame.pack(fill=tk.X, pady=5)
-    start_button = tk.Button(button_frame, text="Start Evolution", command=lambda: threading.Thread(target=run_evolution_task).start())
+    start_button = ttk.Button(button_frame, text="Start Evolution", style="Primary.TButton", command=start_evolution_thread)
     start_button.pack(side=tk.LEFT, padx=10)
-    exit_button = tk.Button(button_frame, text="Exit", command=root.quit)
+    exit_button = ttk.Button(button_frame, text="Exit", command=root.quit)
     exit_button.pack(side=tk.RIGHT, padx=10)
+    
+    # Add tooltips
+    ui_manager.create_tooltip(start_button, "Begin the deck evolution process")
+    ui_manager.create_tooltip(exit_button, "Exit the application")
 
     # --- Helper Functions ---
     def log_message(message):
@@ -157,26 +189,41 @@ def main():
     # --- Evolution Logic ---
     def refresh_meta_deck_list():
         """Refresh the meta deck dropdown with available files"""
-        db_manager = CardDatabaseManager(
-            card_dataset_path=CARD_DATASET_PATH,
-            meta_decks_dir=META_DECKS_DIR
-        )
-        
-        # Get available meta deck files
-        available_files = db_manager.get_available_meta_deck_files()
-        
-        # Add "Latest" as the first option
-        dropdown_options = ["Latest"] + available_files
-        meta_deck_dropdown['values'] = dropdown_options
-        
-        # Set to Latest if not already set
-        if not meta_deck_var.get() or meta_deck_var.get() not in dropdown_options:
-            meta_deck_var.set("Latest")
+        try:
+            ui_manager.show_busy_cursor()
+            
+            db_manager = CardDatabaseManager(
+                card_dataset_path=CARD_DATASET_PATH,
+                meta_decks_dir=META_DECKS_DIR
+            )
+            
+            # Get available meta deck files
+            available_files = db_manager.get_available_meta_deck_files()
+            
+            # Add "Latest" as the first option
+            dropdown_options = ["Latest"] + available_files
+            meta_deck_dropdown['values'] = dropdown_options
+            
+            # Set to Latest if not already set
+            if not meta_deck_var.get() or meta_deck_var.get() not in dropdown_options:
+                meta_deck_var.set("Latest")
+                
+            if not available_files:
+                log_message("No meta deck files found in the meta decks directory.")
+        except Exception as e:
+            ui_manager.show_error("Error", f"Failed to refresh meta deck list: {e}")
+        finally:
+            ui_manager.restore_cursor()
     
     def get_legal_sets():
         """Get the set of legal sets based on UI settings"""
         if not rotation_var.get():
             return None  # No rotation, all sets legal
+            
+        # Validate date format
+        if not ui_manager.validate_date_format(rotation_date_var.get()):
+            ui_manager.show_error("Invalid Date", "Please enter a valid date in YYYY-MM-DD format.")
+            return None
             
         try:
             # Parse the rotation date
@@ -186,13 +233,20 @@ def main():
             # Get legal sets for the rotation date
             db_manager = CardDatabaseManager(card_dataset_path=CARD_DATASET_PATH)
             return db_manager.get_rotation_sets(rotation_date)
-        except ValueError:
-            messagebox.showerror("Invalid Date", "Please enter a valid date in YYYY-MM-DD format.")
+        except Exception as e:
+            ui_manager.show_error("Error", f"Failed to determine legal sets: {e}")
             return None
     
     def run_evolution_task():
         try:
+            # Check if all required directories exist, create if needed
+            os.makedirs(META_DECKS_DIR, exist_ok=True)
+            
+            # Disable the start button during evolution
             start_button.config(state=tk.DISABLED)
+            ui_manager.show_busy_cursor()
+            
+            # Clear the log
             log_widget.config(state=tk.NORMAL)
             log_widget.delete('1.0', tk.END)
             log_widget.config(state=tk.DISABLED)
@@ -273,15 +327,23 @@ def main():
             notebook.select(analysis_frame)  # Switch to analysis tab
 
         except FileNotFoundError:
+            ui_manager.show_error("File Not Found", f"Card dataset not found at '{CARD_DATASET_PATH}'.")
             log_message(f"ERROR: Card dataset not found at '{CARD_DATASET_PATH}'.")
         except Exception as e:
+            ui_manager.show_error("Error", f"An unexpected error occurred: {e}")
             log_message(f"An unexpected error occurred: {e}")
         finally:
             start_button.config(state=tk.NORMAL)
+            ui_manager.restore_cursor()
 
     def start_evolution_thread():
-        thread = threading.Thread(target=run_evolution_task, daemon=True)
-        thread.start()
+        # Confirm before starting a potentially lengthy process
+        if ui_manager.confirm_action("Confirm Start", "Starting the evolution process may take some time. Continue?"):
+            thread = threading.Thread(target=run_evolution_task, daemon=True)
+            thread.start()
+            
+    # Initialize the meta deck dropdown when the app starts
+    refresh_meta_deck_list()
 
     start_button.config(command=start_evolution_thread)
     root.mainloop()
