@@ -293,20 +293,48 @@ class Player:
                     game.effect_resolver.resolve_effect(ability, source_card=card, chosen_targets=chosen_targets)
 
     def sing_song(self, song_card: Card, singer: Card, game_turn: int) -> bool:
-        """Plays a song by exerting a character. Returns True on success."""
-        singer_ability_cost = singer.get_keyword_value('Singer')
-        if (song_card in self.hand and
-            song_card.card_type == 'Song' and
-            singer in self.play_area and
-            self._can_character_act(singer, game_turn) and
-            singer_ability_cost is not None and
-            song_card.cost <= singer_ability_cost):
+        """Plays a song by exerting a single character. Returns True on success."""
+        return self.sing_song_together(song_card, [singer], game_turn)
+        
+    def sing_song_together(self, song_card: Card, singers: list[Card], game_turn: int) -> bool:
+        """Plays a song by exerting multiple characters together (Sing Together mechanic).
+        
+        Returns True on success.
+        
+        The combined Singer values of all singers must be at least equal to the song's cost.
+        All singers must be able to act (not exerted and ink is dry).
+        """
+        # Check if the song is in hand and is actually a Song card
+        if song_card not in self.hand or song_card.card_type != 'Song':
+            return False
+            
+        # Validate all singers
+        total_singer_value = 0
+        for singer in singers:
+            # Check if singer is in play area and can act
+            if (singer not in self.play_area or 
+                not self._can_character_act(singer, game_turn)):
+                return False
+            
+            # Check if it has the Singer keyword
+            singer_ability_cost = singer.get_keyword_value('Singer')
+            if singer_ability_cost is None:
+                return False
+                
+            total_singer_value += singer_ability_cost
+        
+        # Check if the combined Singer value is enough for the song
+        if total_singer_value < song_card.cost:
+            return False
+            
+        # Success! Exert all singers and play the song
+        for singer in singers:
             singer.is_exerted = True
-            self.hand.remove(song_card)
-            song_card.location = 'discard'
-            self.discard_pile.append(song_card)
-            return True
-        return False
+            
+        self.hand.remove(song_card)
+        song_card.location = 'discard'
+        self.discard_pile.append(song_card)
+        return True
 
     def clear_temporary_mods(self):
         """Clears any temporary modifications, like from Support."""
@@ -436,7 +464,14 @@ class GameState:
 
     def _set_phase(self):
         """Start of turn: Check for and trigger any start-of-turn abilities."""
-        # Placeholder for start-of-turn triggered abilities
+        # Process Location cards for passive lore gain
+        player = self.get_player(self.current_player_id)
+        for card in player.play_area:
+            if card.card_type == 'Location' and card.lore > 0:
+                player.lore += card.lore
+                print(f"{player.player_id} gained {card.lore} lore from {card.name}")
+        
+        # Add placeholder for other start-of-turn triggers to be implemented later
         pass
 
     def _draw_phase(self):

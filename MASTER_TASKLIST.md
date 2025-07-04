@@ -36,19 +36,19 @@ This document outlines the remaining tasks required to bring Project Oracle to f
   - [x] Integrate all these heuristics into the `Player`'s decision-making process in `src/game_engine/player_logic.py`.
   - [x] Add unit tests to verify that the AI makes different (and better) decisions with these enhancements.
 
-- [ ] **Task 2.3: Implement Missing Card Types and Keywords**
-  - [ ] **Location Cards**
+- [x] **Task 2.3: Implement Missing Card Types and Keywords**
+  - [x] **Location Cards**
     - [x] Complete the implementation of Location card type with move cost mechanics
-    - [ ] Add passive lore gain at start of turn for Locations with lore value
+    - [x] Add passive lore gain at start of turn for Locations with lore value
     - [x] Implement location challenge mechanics (no return damage)
-  - [ ] **Keywords**
-    - [ ] Implement Rush keyword to bypass the "ink is dry" requirement for challenges
-    - [ ] Complete Ward implementation with proper targeting restrictions
-    - [ ] Implement Vanish keyword effects when targeted by opponents
-    - [ ] Implement Sing Together mechanic to allow multiple characters to exert for a song
-  - [ ] Add unit tests for each newly implemented card type and keyword
+  - [x] **Keywords**
+    - [x] Implement Rush keyword to bypass the "ink is dry" requirement for challenges
+    - [x] Complete Ward implementation with proper targeting restrictions
+    - [x] Implement Vanish keyword effects when targeted by opponents
+    - [x] Implement Sing Together mechanic to allow multiple characters to exert for a song
+  - [x] Add unit tests for each newly implemented card type and keyword
 
-- [ ] **Task 2.3: Implement "The Bag" for Simultaneous Trigger Resolution**
+- [ ] **Task 2.4: Implement "The Bag" for Simultaneous Trigger Resolution**
   - [ ] Design and implement the mechanism for tracking and resolving simultaneous ability triggers as described in section 1.4 of the programmer's guide.
   - [ ] Modify the effect resolver to properly queue triggered abilities and resolve them according to active player priority.
   - [ ] Add unit tests to validate correct resolution order of simultaneous triggers.
