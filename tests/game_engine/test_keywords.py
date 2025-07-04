@@ -1,13 +1,13 @@
 import unittest
 from unittest.mock import Mock
 
-from src.game_engine.game_engine import GameState, Player, Card
+from src.game_engine.game_engine import GameState, Player, Card, Deck
 
 class TestKeywords(unittest.TestCase):
     def setUp(self):
         """Set up a basic game state for testing keywords."""
-        self.player1 = Player(player_id=1, deck=[])
-        self.player2 = Player(player_id=2, deck=[])
+        self.player1 = Player(player_id=1, initial_deck=Deck([]))
+        self.player2 = Player(player_id=2, initial_deck=Deck([]))
         self.game = GameState(player1=self.player1, player2=self.player2)
         self.player1.game = self.game
         self.player2.game = self.game
@@ -17,7 +17,7 @@ class TestKeywords(unittest.TestCase):
         """Test the Evasive keyword logic."""
         # 1. Setup
         # Challenger has no keywords
-        challenger = Card({'Name': 'Challenger', 'Type': 'Character', 'Cost': 1, 'Strength': 1, 'Willpower': 1}, owner_player_id=1)
+        challenger = Card({'Name': 'Challenger Card', 'Type': 'Character', 'Cost': 1, 'Strength': 1, 'Willpower': 1}, owner_player_id=1)
         challenger.can_challenge = True # Assume it can challenge this turn
         self.player1.play_area.append(challenger)
 
@@ -32,8 +32,20 @@ class TestKeywords(unittest.TestCase):
         self.player2.play_area.append(target_plain)
 
         # 2. Action
+        # Add debug prints
+        print(f"Challenger card: {challenger.name}, owner_id: {challenger.owner_player_id}")
+        print(f"Target plain card: {target_plain.name}, owner_id: {target_plain.owner_player_id}, is_exerted: {target_plain.is_exerted}")
+        print(f"Target evasive card: {target_evasive.name}, owner_id: {target_evasive.owner_player_id}, is_exerted: {target_evasive.is_exerted}, has_evasive: {target_evasive.has_keyword('Evasive')}")
+        
         # Get valid targets for the non-Evasive challenger
         valid_targets = self.player1.get_valid_challenge_targets(challenger, self.player2)
+        print(f"Valid targets: {[t.name for t in valid_targets]}")
+        
+        # Debug the filter function directly
+        all_targets = [target for target in self.player2.play_area if target.is_exerted]
+        print(f"All exerted targets before filtering: {[t.name for t in all_targets]}")
+        filtered_targets = self.player1._filter_invalid_challenge_targets(challenger, all_targets)
+        print(f"After filtering invalid challenges: {[t.name for t in filtered_targets]}")
 
         # 3. Assert
         # The non-Evasive challenger should only be able to challenge the non-Evasive target

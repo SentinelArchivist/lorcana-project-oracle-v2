@@ -1,15 +1,15 @@
 import unittest
 from unittest.mock import Mock, MagicMock
 
-from src.game_engine.game_engine import GameState, Player, Card
+from src.game_engine.game_engine import GameState, Player, Card, Deck
 from src.abilities.create_abilities_database import ParsedAbility
 
 
 class TestLocationCards(unittest.TestCase):
     def setUp(self):
         """Set up a basic game state for testing location card interactions."""
-        self.player1 = Player(player_id=1, deck=[])
-        self.player2 = Player(player_id=2, deck=[])
+        self.player1 = Player(player_id=1, initial_deck=Deck([]))
+        self.player2 = Player(player_id=2, initial_deck=Deck([]))
         self.game = GameState(player1=self.player1, player2=self.player2)
         self.player1.game = self.game
         self.player2.game = self.game

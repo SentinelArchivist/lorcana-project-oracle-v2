@@ -79,12 +79,12 @@ This document outlines the remaining tasks required to bring Project Oracle to f
   - [x] Update the UI to include a progress bar, a generation counter (`Gen X / Y`), and a display for the current best fitness score.
   - [x] Run the GA in a separate thread from the main UI thread to prevent the application from freezing during the evolutionary process. Update the UI elements via the callback.
 
-- [ ] **Task 3.3: Enhance Final Results Display**
-  - [ ] Improve formatting and readability of the generated deck list.
-  - [ ] Add basic statistics about the GA run (generations, fitness progression).
-  - [ ] Include summary of matchup performance against meta decks.
-  - [ ] Display the deck explanation generated in Task 2.5.
-  - [ ] Add a "Copy to Clipboard" button for the decklist.
+- [x] **Task 3.3: Enhance Final Results Display**
+  - [x] Improve formatting and readability of the generated deck list.
+  - [x] Add basic statistics about the GA run (generations, fitness progression).
+  - [x] Include summary of matchup performance against meta decks.
+  - [x] Display the deck explanation generated in Task 2.5.
+  - [x] Add a "Copy to Clipboard" button for the decklist.
 
 ---
 

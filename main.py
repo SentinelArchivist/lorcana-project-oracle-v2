@@ -93,10 +93,33 @@ def main():
     log_widget.pack(fill=tk.BOTH, expand=True)
     notebook.add(log_frame, text="Evolution Log")
     
-    # Tab 2: Best Deck
+    # Tab 2: Best Deck - Enhanced with statistics and copy button
     deck_frame = ttk.Frame(notebook)
-    best_deck_widget = scrolledtext.ScrolledText(deck_frame, state=tk.DISABLED, wrap=tk.WORD, height=20)
+    
+    # Deck header frame
+    deck_header_frame = ttk.Frame(deck_frame)
+    deck_header_frame.pack(fill=tk.X, padx=5, pady=5)
+    
+    deck_title_label = ttk.Label(deck_header_frame, text="Evolved Deck", style="Header.TLabel")
+    deck_title_label.pack(side=tk.LEFT, anchor=tk.W)
+    
+    copy_button = ttk.Button(deck_header_frame, text="Copy to Clipboard", command=lambda: copy_deck_to_clipboard())
+    copy_button.pack(side=tk.RIGHT, anchor=tk.E, padx=5)
+    
+    # Stats frame for deck
+    deck_stats_frame = ttk.Frame(deck_frame)
+    deck_stats_frame.pack(fill=tk.X, padx=5, pady=5)
+    
+    deck_stats_label = ttk.Label(deck_stats_frame, text="")
+    deck_stats_label.pack(side=tk.LEFT, anchor=tk.W)
+    
+    # Deck content with improved formatting
+    deck_content_frame = ttk.Frame(deck_frame)
+    deck_content_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+    
+    best_deck_widget = scrolledtext.ScrolledText(deck_content_frame, state=tk.DISABLED, wrap=tk.WORD, height=20)
     best_deck_widget.pack(fill=tk.BOTH, expand=True)
+    
     notebook.add(deck_frame, text="Best Deck")
     
     # Tab 3: Deck Analysis
@@ -178,16 +201,126 @@ def main():
         log_widget.config(state=tk.DISABLED)
         log_widget.see(tk.END)
 
-    def update_best_deck_display(deck_list):
+    def update_best_deck_display(deck_list, detailed_results=None, ga_stats=None):
+        """Update the best deck display with improved formatting and statistics"""
         best_deck_widget.config(state=tk.NORMAL)
         best_deck_widget.delete('1.0', tk.END)
+        
         if deck_list:
+            # Process the deck list to get card counts
             card_counts = {}
             for card_name in sorted(deck_list):
                 card_counts[card_name] = card_counts.get(card_name, 0) + 1
-            for card_name, count in card_counts.items():
-                best_deck_widget.insert(tk.END, f"{count}x {card_name}\n")
+            
+            # Group cards by cost (mana curve) for better organization
+            cards_by_cost = {}
+            costs_info = {}  # To store cost information for each card
+            
+            # First pass to gather cost information
+            try:
+                df = pd.read_csv(CARD_DATASET_PATH)
+                for card_name in card_counts.keys():
+                    card_info = df[df['Card_Name'] == card_name]
+                    if not card_info.empty:
+                        cost = int(card_info['Ink_Cost'].iloc[0])
+                        card_type = card_info['Card_Type'].iloc[0]
+                        costs_info[card_name] = {'cost': cost, 'type': card_type}
+                        
+                        if cost not in cards_by_cost:
+                            cards_by_cost[cost] = []
+                        cards_by_cost[cost].append(card_name)
+            except Exception as e:
+                # If we can't load the card data, just use a flat list
+                log_message(f"Warning: Could not organize cards by cost: {e}")
+                cards_by_cost = {0: list(card_counts.keys())}  # Put all cards in cost 0
+            
+            # Add a header
+            best_deck_widget.insert(tk.END, "=== EVOLVED DECK ===\n\n")
+            
+            # Format the deck list by mana cost
+            if cards_by_cost and any(cost != 0 for cost in cards_by_cost.keys()):
+                best_deck_widget.insert(tk.END, "--- By Mana Cost ---\n")
+                for cost in sorted(cards_by_cost.keys()):
+                    if cost == 0 and not cards_by_cost[cost]:  # Skip empty cost categories
+                        continue
+                    best_deck_widget.insert(tk.END, f"\n{cost} Ink:\n")
+                    for card_name in sorted(cards_by_cost[cost]):
+                        count = card_counts[card_name]
+                        best_deck_widget.insert(tk.END, f"  {count}x {card_name}\n")
+            else:
+                # If we couldn't organize by cost, show flat list
+                for card_name, count in sorted(card_counts.items()):
+                    best_deck_widget.insert(tk.END, f"{count}x {card_name}\n")
+            
+            # Add a separator
+            best_deck_widget.insert(tk.END, "\n----------------------\n")
+            
+            # Display card type summary if we have the data
+            if costs_info:
+                card_types = {}
+                for card, info in costs_info.items():
+                    card_type = info['type']
+                    if card_type not in card_types:
+                        card_types[card_type] = 0
+                    card_types[card_type] += card_counts[card]
+                
+                best_deck_widget.insert(tk.END, "\n--- Card Types ---\n")
+                for card_type, count in sorted(card_types.items()):
+                    best_deck_widget.insert(tk.END, f"{card_type}: {count}\n")
+            
+            # Add a separator before performance data
+            best_deck_widget.insert(tk.END, "\n----------------------\n")
+            
+            # Add performance information if available
+            if detailed_results:
+                best_deck_widget.insert(tk.END, "\n--- Performance ---\n")
+                total_matches = 0
+                total_wins = 0
+                
+                for deck_name, win_rate in sorted(detailed_results.items(), key=lambda x: x[1], reverse=True):
+                    # Assuming we simulated 100 games per deck to get win rates
+                    matches = 100
+                    wins = int(win_rate * matches)
+                    total_matches += matches
+                    total_wins += wins
+                    best_deck_widget.insert(tk.END, f"vs {deck_name}: {win_rate:.1%} ({wins}/{matches})\n")
+                
+                if total_matches > 0:
+                    overall_win_rate = total_wins / total_matches
+                    best_deck_widget.insert(tk.END, f"\nOverall: {overall_win_rate:.1%} ({total_wins}/{total_matches})\n")
+            
+            # Update the deck stats label
+            update_deck_stats_label(deck_list, detailed_results, ga_stats)
+            
         best_deck_widget.config(state=tk.DISABLED)
+        
+    def update_deck_stats_label(deck_list, detailed_results=None, ga_stats=None):
+        """Update the deck statistics summary"""
+        stats_text = []
+        
+        if deck_list:
+            unique_cards = len(set(deck_list))
+            total_cards = len(deck_list)
+            stats_text.append(f"Cards: {total_cards} total, {unique_cards} unique")
+        
+        if detailed_results:
+            win_rates = list(detailed_results.values())
+            avg_win_rate = sum(win_rates) / len(win_rates) if win_rates else 0
+            stats_text.append(f"Average Win Rate: {avg_win_rate:.1%}")
+        
+        if ga_stats:
+            stats_text.append(f"Generations: {ga_stats.get('generations', 'N/A')}")
+            stats_text.append(f"Final Fitness: {ga_stats.get('best_fitness', 0):.4f}")
+            stats_text.append(f"Runtime: {ga_stats.get('runtime', 0):.1f}s")
+        
+        deck_stats_label.config(text="   |   ".join(stats_text) if stats_text else "")
+        
+    def copy_deck_to_clipboard():
+        """Copy the current deck list to clipboard"""
+        text = best_deck_widget.get(1.0, tk.END)
+        root.clipboard_clear()
+        root.clipboard_append(text)
+        ui_manager.show_info("Copy Complete", "Deck list copied to clipboard")
         
     def update_deck_analysis_display(analysis_report):
         deck_analysis_widget.config(state=tk.NORMAL)
@@ -201,9 +334,23 @@ def main():
         ga_instance = ga_object.ga_instance
         best_solution, best_fitness, _ = ga_instance.best_solution()
         
+        # Get the generation information
+        current_generation = ga_instance.generations_completed
+        
+        # Create GA stats dictionary for UI update
+        ga_stats = {
+            'generations': current_generation,
+            'max_generations': NUM_GENERATIONS,
+            'best_fitness': best_fitness,
+            'fitness_history': ga_object.fitness_history if hasattr(ga_object, 'fitness_history') else None
+        }
+        
         # Use the deck_generator from the passed ga_object to map IDs to names
         deck_names = [ga_object.deck_generator.id_to_card[gene] for gene in best_solution]
-        update_best_deck_display(deck_names)
+        
+        # Pass detailed results if available
+        detailed_results = ga_object.best_solution_detailed_results if hasattr(ga_object, 'best_solution_detailed_results') else None
+        update_best_deck_display(deck_names, detailed_results, ga_stats)
         
         # Update deck analysis report if available
         if hasattr(ga_object, 'get_deck_report') and ga_object.best_solution:
@@ -413,7 +560,23 @@ def main():
             log_message("\n--- Generating Deck Analysis Report ---")
             update_deck_analysis_display(ga.get_deck_report())
             log_message("Deck analysis report available in the 'Deck Analysis' tab.")
-            notebook.select(analysis_frame)  # Switch to analysis tab
+            
+            # Create GA stats dictionary
+            ga_stats = {
+                'generations': NUM_GENERATIONS,
+                'best_fitness': best_fitness,
+                'runtime': end_time - start_time,
+                'fitness_history': ga.fitness_history if hasattr(ga, 'fitness_history') else None
+            }
+            
+            # Update the best deck display with detailed stats
+            if ga.best_solution:
+                best_solution = ga.best_solution
+                deck_names = [ga.deck_generator.id_to_card[gene] for gene in best_solution]
+                update_best_deck_display(deck_names, ga.best_solution_detailed_results, ga_stats)
+            
+            # Switch to best deck tab first (then user can explore analysis tab after)
+            notebook.select(deck_frame)
 
         except FileNotFoundError:
             ui_manager.show_error("File Not Found", f"Card dataset not found at '{CARD_DATASET_PATH}'.")

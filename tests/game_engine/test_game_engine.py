@@ -35,9 +35,9 @@ class TestKeywords(unittest.TestCase):
         """Set up a basic game state for each test."""
         self.p1_deck = Deck([Card(create_mock_card_data(f"P1-Card{i}", f"p1c{i}"), 1) for i in range(20)])
         self.p2_deck = Deck([Card(create_mock_card_data(f"P2-Card{i}", f"p2c{i}"), 2) for i in range(20)])
-        self.game = GameState(self.p1_deck, self.p2_deck)
-        self.player1 = self.game.players[1]
-        self.player2 = self.game.players[2]
+        self.player1 = Player(player_id=1, initial_deck=self.p1_deck)
+        self.player2 = Player(player_id=2, initial_deck=self.p2_deck)
+        self.game = GameState(self.player1, self.player2)
         self.game.turn_number = 2  # Avoid turn 1 draw skip
 
     def test_challenge_with_challenger(self):
@@ -127,9 +127,9 @@ class TestPlayerActions(unittest.TestCase):
     def setUp(self):
         p1_deck = create_mock_deck(player_id=1)
         p2_deck = create_mock_deck(player_id=2)
-        self.game = GameState(p1_deck, p2_deck)
-        self.player1 = self.game.players[1]
-        self.player2 = self.game.players[2]
+        self.player1 = Player(player_id=1, initial_deck=p1_deck)
+        self.player2 = Player(player_id=2, initial_deck=p2_deck)
+        self.game = GameState(self.player1, self.player2)
         self.player1.draw_initial_hand()
         self.player2.draw_initial_hand()
 
@@ -300,9 +300,9 @@ class TestEffectResolverIntegration(unittest.TestCase):
     def setUp(self):
         self.p1_deck = create_mock_deck(1)
         self.p2_deck = create_mock_deck(2)
-        self.game = GameState(self.p1_deck, self.p2_deck)
-        self.player1 = self.game.players[1]
-        self.player2 = self.game.players[2]
+        self.player1 = Player(player_id=1, initial_deck=self.p1_deck)
+        self.player2 = Player(player_id=2, initial_deck=self.p2_deck)
+        self.game = GameState(self.player1, self.player2)
         self.game.turn_number = 2
 
     def test_play_card_with_on_play_effect(self):

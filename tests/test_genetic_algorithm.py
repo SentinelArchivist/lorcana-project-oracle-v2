@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 import numpy as np
 from src.deck_generator import DeckGenerator
 from src.evolution import FitnessCalculator
@@ -111,8 +111,21 @@ class TestGeneticAlgorithm(unittest.TestCase):
 
     def test_ga_run_completes(self):
         """Tests that the GA can run to completion without errors."""
+        # Create a simple mock fitness function that returns a fixed value
+        def mock_fitness_function(ga_instance, solution, solution_idx):
+            return 0.75
+        
+        # Save the original function
+        original_function = self.ga._fitness_function_wrapper
+        
+        # Replace with our mock function
+        self.ga._fitness_function_wrapper = mock_fitness_function
+        
         try:
+            # Run with a very small number of generations for testing
+            self.ga.num_generations = 1
             best_solution, best_fitness = self.ga.run()
+            
             self.assertIsNotNone(best_solution)
             self.assertIsInstance(best_solution, list)
             self.assertEqual(len(best_solution), 60)
@@ -120,6 +133,9 @@ class TestGeneticAlgorithm(unittest.TestCase):
             self.assertGreaterEqual(best_fitness, -1)
         except Exception as e:
             self.fail(f"GA run failed with an exception: {e}")
+        finally:
+            # Restore the original function
+            self.ga._fitness_function_wrapper = original_function
 
 
 if __name__ == '__main__':

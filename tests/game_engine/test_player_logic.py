@@ -31,8 +31,8 @@ def create_mock_card_data(name: str, **kwargs) -> dict:
 class TestNewPlayerLogic(unittest.TestCase):
     def setUp(self):
         """Set up a basic game state for testing."""
-        self.player1 = Player(player_id=1, deck=Deck([]))
-        self.player2 = Player(player_id=2, deck=Deck([]))
+        self.player1 = Player(player_id=1, initial_deck=Deck([]))
+        self.player2 = Player(player_id=2, initial_deck=Deck([]))
         self.game = GameState(self.player1, self.player2)
         self.game.turn_number = 3 # Give characters time to be ready
 

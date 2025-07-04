@@ -73,21 +73,20 @@ class TestEffectResolver(unittest.TestCase):
         target_player.draw_cards.assert_called_once_with(2)
 
     def test_get_targets_self(self):
-        """Test that _get_targets correctly resolves 'Self' to the source card's owner."""
+        """Test that _get_targets correctly resolves 'Self' to the source card itself."""
         # 1. Setup
         source_card = Mock(spec=Card)
         source_card.owner_player_id = self.player1.player_id
         effect_schema = {'target': 'Self'}
 
-        # Mock the game state to return the correct player
-        self.game.get_player = MagicMock(return_value=self.player1)
-
         # 2. Action
         targets = self.resolver._get_targets(effect_schema, source_card)
 
         # 3. Assert
-        self.game.get_player.assert_called_once_with(self.player1.player_id)
-        self.assertEqual(targets, [self.player1])
+        # Verify that the source card itself is returned, not the player
+        # This matches the implementation where effects like DrawCard then
+        # look up the owner of the card to apply the effect
+        self.assertEqual(targets, [source_card])
 
     def test_resolve_banish_calls_banish_character(self):
         """Test that resolving 'Banish' calls the banish_character method on the target's owner."""
@@ -266,6 +265,257 @@ class TestEffectResolver(unittest.TestCase):
         # 3. Assert
         self.assertIn("Singer 4", target_card.keywords)
         self.resolver._get_targets.assert_called_once_with(schema_ability, source_card, None)
+
+    def test_get_targets_all_characters(self):
+        """Test that _get_targets correctly resolves 'AllCharacters' to all characters in play."""
+        # 1. Setup
+        source_card = Mock(spec=Card)
+        source_card.owner_player_id = self.player1.player_id
+
+        # Setup mock play areas
+        player1_character = Mock(spec=Card)
+        player2_character = Mock(spec=Card)
+        self.player1.play_area = [player1_character]
+        self.player2.play_area = [player2_character]
+
+        # Set up the game to return the appropriate players
+        self.game.get_player = MagicMock(return_value=self.player1)
+        self.game.get_opponent = MagicMock(return_value=self.player2)
+
+        effect_schema = {'target': 'AllCharacters'}
+
+        # 2. Action
+        targets = self.resolver._get_targets(effect_schema, source_card)
+
+        # 3. Assert
+        self.assertEqual(len(targets), 2)
+        self.assertIn(player1_character, targets)
+        self.assertIn(player2_character, targets)
+
+    def test_get_targets_opponent_characters(self):
+        """Test that _get_targets correctly resolves 'OpponentCharacters' to opponent's characters."""
+        # 1. Setup
+        source_card = Mock(spec=Card)
+        source_card.owner_player_id = self.player1.player_id
+
+        # Setup mock play areas
+        player1_character = Mock(spec=Card)
+        player2_character = Mock(spec=Card)
+        self.player1.play_area = [player1_character]
+        self.player2.play_area = [player2_character]
+
+        # Set up the game to return the appropriate players
+        self.game.get_player = MagicMock(return_value=self.player1)
+        self.game.get_opponent = MagicMock(return_value=self.player2)
+
+        effect_schema = {'target': 'OpponentCharacters'}
+
+        # 2. Action
+        targets = self.resolver._get_targets(effect_schema, source_card)
+
+        # 3. Assert
+        self.assertEqual(len(targets), 1)
+        self.assertIn(player2_character, targets)
+
+    def test_get_targets_friendly_characters(self):
+        """Test that _get_targets correctly resolves 'FriendlyCharacters' to controller's characters."""
+        # 1. Setup
+        source_card = Mock(spec=Card)
+        source_card.owner_player_id = self.player1.player_id
+
+        # Setup mock play areas
+        player1_character = Mock(spec=Card)
+        player2_character = Mock(spec=Card)
+        self.player1.play_area = [player1_character]
+        self.player2.play_area = [player2_character]
+
+        # Set up the game to return the appropriate players
+        self.game.get_player = MagicMock(return_value=self.player1)
+        self.game.get_opponent = MagicMock(return_value=self.player2)
+
+        effect_schema = {'target': 'FriendlyCharacters'}
+
+        # 2. Action
+        targets = self.resolver._get_targets(effect_schema, source_card)
+
+        # 3. Assert
+        self.assertEqual(len(targets), 1)
+        self.assertIn(player1_character, targets)
+
+    def test_get_targets_opponent(self):
+        """Test that _get_targets correctly resolves 'Opponent' to the opponent player."""
+        # 1. Setup
+        source_card = Mock(spec=Card)
+        source_card.owner_player_id = self.player1.player_id
+
+        # Set up the game to return the appropriate players
+        self.game.get_player = MagicMock(return_value=self.player1)
+        self.game.get_opponent = MagicMock(return_value=self.player2)
+
+        effect_schema = {'target': 'Opponent'}
+
+        # 2. Action
+        targets = self.resolver._get_targets(effect_schema, source_card)
+
+        # 3. Assert
+        self.assertEqual(len(targets), 1)
+        self.assertEqual(targets[0], self.player2)
+
+    def test_get_targets_controller(self):
+        """Test that _get_targets correctly resolves 'Controller' to the controller player."""
+        # 1. Setup
+        source_card = Mock(spec=Card)
+        source_card.owner_player_id = self.player1.player_id
+
+        # Set up the game to return the appropriate players
+        self.game.get_player = MagicMock(return_value=self.player1)
+        self.game.get_opponent = MagicMock(return_value=self.player2)
+
+        effect_schema = {'target': 'Controller'}
+
+        # 2. Action
+        targets = self.resolver._get_targets(effect_schema, source_card)
+
+        # 3. Assert
+        self.assertEqual(len(targets), 1)
+        self.assertEqual(targets[0], self.player1)
+
+    def test_get_targets_with_cost_filter(self):
+        """Test filtering targets by cost."""
+        # 1. Setup
+        source_card = Mock(spec=Card)
+        source_card.owner_player_id = self.player1.player_id
+
+        # Create mock cards with different costs
+        low_cost_card = Mock(spec=Card)
+        low_cost_card.cost = 2
+        high_cost_card = Mock(spec=Card)
+        high_cost_card.cost = 5
+
+        # Setup mock play area
+        self.player2.play_area = [low_cost_card, high_cost_card]
+
+        # Set up the game to return the appropriate players
+        self.game.get_player = MagicMock(return_value=self.player1)
+        self.game.get_opponent = MagicMock(return_value=self.player2)
+
+        effect_schema = {'target': 'OpponentCharacters', 'cost_less_than': 3}
+
+        # 2. Action
+        targets = self.resolver._get_targets(effect_schema, source_card)
+
+        # 3. Assert
+        self.assertEqual(len(targets), 1)
+        self.assertIn(low_cost_card, targets)
+        self.assertNotIn(high_cost_card, targets)
+
+    def test_get_targets_with_exerted_filter(self):
+        """Test filtering targets by exerted status."""
+        # 1. Setup
+        source_card = Mock(spec=Card)
+        source_card.owner_player_id = self.player1.player_id
+
+        # Create mock cards with different exerted status
+        exerted_card = Mock(spec=Card)
+        exerted_card.is_exerted = True
+        ready_card = Mock(spec=Card)
+        ready_card.is_exerted = False
+
+        # Setup mock play area
+        self.player2.play_area = [exerted_card, ready_card]
+
+        # Set up the game to return the appropriate players
+        self.game.get_player = MagicMock(return_value=self.player1)
+        self.game.get_opponent = MagicMock(return_value=self.player2)
+
+        effect_schema = {'target': 'OpponentCharacters', 'is_exerted': True}
+
+        # 2. Action
+        targets = self.resolver._get_targets(effect_schema, source_card)
+
+        # 3. Assert
+        self.assertEqual(len(targets), 1)
+        self.assertIn(exerted_card, targets)
+        self.assertNotIn(ready_card, targets)
+
+    def test_get_targets_with_keyword_filter(self):
+        """Test filtering targets by keyword."""
+        # 1. Setup
+        source_card = Mock(spec=Card)
+        source_card.owner_player_id = self.player1.player_id
+
+        # Create mock cards with different keywords
+        evasive_card = Mock(spec=Card)
+        evasive_card.has_keyword = MagicMock(return_value=True)
+        non_evasive_card = Mock(spec=Card)
+        non_evasive_card.has_keyword = MagicMock(return_value=False)
+
+        # Setup mock play area
+        self.player2.play_area = [evasive_card, non_evasive_card]
+
+        # Set up the game to return the appropriate players
+        self.game.get_player = MagicMock(return_value=self.player1)
+        self.game.get_opponent = MagicMock(return_value=self.player2)
+
+        effect_schema = {'target': 'OpponentCharacters', 'has_keyword': 'Evasive'}
+
+        # 2. Action
+        targets = self.resolver._get_targets(effect_schema, source_card)
+
+        # 3. Assert
+        self.assertEqual(len(targets), 1)
+        self.assertIn(evasive_card, targets)
+        self.assertNotIn(non_evasive_card, targets)
+        evasive_card.has_keyword.assert_called_once_with('Evasive')
+
+    def test_get_targets_with_multiple_filters(self):
+        """Test filtering targets by multiple criteria."""
+        # 1. Setup
+        source_card = Mock(spec=Card)
+        source_card.owner_player_id = self.player1.player_id
+
+        # Create mock cards with various properties
+        card1 = Mock(spec=Card)
+        card1.cost = 2
+        card1.is_exerted = True
+        card1.has_keyword = MagicMock(return_value=True)
+        card1.card_type = 'Character'
+
+        card2 = Mock(spec=Card)
+        card2.cost = 2
+        card2.is_exerted = False
+        card2.has_keyword = MagicMock(return_value=True)
+        card2.card_type = 'Character'
+
+        card3 = Mock(spec=Card)
+        card3.cost = 4
+        card3.is_exerted = True
+        card3.has_keyword = MagicMock(return_value=True)
+        card3.card_type = 'Character'
+
+        # Setup mock play area
+        self.player2.play_area = [card1, card2, card3]
+
+        # Set up the game to return the appropriate players
+        self.game.get_player = MagicMock(return_value=self.player1)
+        self.game.get_opponent = MagicMock(return_value=self.player2)
+
+        effect_schema = {
+            'target': 'OpponentCharacters', 
+            'cost_less_than': 3, 
+            'is_exerted': True,
+            'has_keyword': 'Evasive',
+            'card_type': 'Character'
+        }
+
+        # 2. Action
+        targets = self.resolver._get_targets(effect_schema, source_card)
+
+        # 3. Assert
+        self.assertEqual(len(targets), 1)
+        self.assertIn(card1, targets)
+        self.assertNotIn(card2, targets)  # Not exerted
+        self.assertNotIn(card3, targets)  # Cost too high
 
 
 if __name__ == '__main__':

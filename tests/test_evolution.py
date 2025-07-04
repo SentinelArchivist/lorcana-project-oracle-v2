@@ -11,7 +11,7 @@ class TestFitnessCalculator(unittest.TestCase):
         self.assertTrue(os.path.exists(meta_decks_path), f"Meta decks CSV not found at {meta_decks_path}")
         
         meta_decks_df = pd.read_csv(meta_decks_path)
-        meta_decks_list = meta_decks_df.groupby('Deck_Name')['Card_Name'].apply(list).tolist()
+        meta_decks_list = meta_decks_df.groupby('DeckName')['CardName'].apply(list).tolist()
         
         try:
             calculator = FitnessCalculator(meta_decks=meta_decks_list, deck_generator=self.deck_generator)
@@ -56,7 +56,7 @@ class TestFitnessCalculator(unittest.TestCase):
 
     def test_simulate_game(self):
         """Tests the full game simulation."""
-        winner = self.calculator.simulate_game(self.candidate_deck, self.meta_decks[0], goes_first=True)
+        winner = self.calculator.simulate_game(self.candidate_deck, self.meta_decks[0], goes_first=True, max_turns=10)
         self.assertIn(winner, ["player1", "player2"])
 
 if __name__ == '__main__':
