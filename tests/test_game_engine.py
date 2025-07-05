@@ -220,18 +220,18 @@ class TestGameState(unittest.TestCase):
 
     def test_end_turn(self):
         """Tests that the turn progression logic is correct."""
-        player1 = self.game_state.players[0]
-        player2 = self.game_state.players[1]
+        player1 = self.game_state.players[1]
+        player2 = self.game_state.players[2]
 
         # Player 1 ends their turn
         self.game_state.end_turn()
-        self.assertEqual(self.game_state.current_player, player2)
-        self.assertEqual(self.game_state.turn, 1) # Still turn 1
+        self.assertEqual(self.game_state.current_player_id, player2.player_id)
+        self.assertEqual(self.game_state.turn_number, 1) # Still turn 1
 
         # Player 2 ends their turn, completing the round
         self.game_state.end_turn()
-        self.assertEqual(self.game_state.current_player, player1)
-        self.assertEqual(self.game_state.turn, 2) # Should now be turn 2
+        self.assertEqual(self.game_state.current_player_id, player1.player_id)
+        self.assertEqual(self.game_state.turn_number, 2) # Should now be turn 2
 
     def test_turn_start_readies_cards_and_draws(self):
         """Tests that cards are readied and one is drawn at the start of a turn."""
@@ -250,18 +250,27 @@ class TestGameState(unittest.TestCase):
         initial_hand_size = len(self.player1.hand)
 
         # Action: Progress to player 1's next turn
-        self.game_state.end_turn()  # End of P1's turn 1
-
-        # Manually start P2's turn
-        self.game_state._ready_phase()
-        self.game_state._set_phase()
-        self.game_state._draw_phase()
-        self.game_state.end_turn()  # End of P2's turn 1
-
-        # Manually start P1's second turn
-        self.game_state._ready_phase()
-        self.game_state._set_phase()
-        self.game_state._draw_phase()
+        # End P1's turn 1 - this switches to P2
+        self.game_state.end_turn()
+        
+        # Verify we're now on P2's turn
+        self.assertEqual(self.game_state.current_player_id, self.player2.player_id)
+        
+        # Simulate P2's complete turn
+        self.game_state._ready_phase()  # Ready P2's cards
+        self.game_state._set_phase()    # P2's set phase
+        self.game_state._draw_phase()   # P2 draws a card
+        
+        # End P2's turn - this switches back to P1 and increments turn number
+        self.game_state.end_turn()
+        
+        # Verify we're now on P1's turn 2
+        self.assertEqual(self.game_state.current_player_id, self.player1.player_id)
+        
+        # Now simulate P1's second turn start
+        self.game_state._ready_phase()  # This should ready P1's inked card
+        self.game_state._set_phase()    # P1's set phase
+        self.game_state._draw_phase()   # P1 draws a card
 
         # Assert: Cards are readied and a card is drawn for P1 on turn 2
         self.assertEqual(self.game_state.turn_number, 2)
